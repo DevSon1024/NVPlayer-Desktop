@@ -67,9 +67,10 @@ class MpvInstance internal constructor(
             val baseOptions = mapOf(
                 "config" to "no",
                 "terminal" to "no",
-                "vo" to "null",
+                "vo" to "libmpv",
                 "idle" to "yes"
             ) + defaultOptions
+
 
             for ((key, value) in baseOptions) {
                 instance.setOption(key, value)

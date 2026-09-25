@@ -51,6 +51,9 @@ import java.io.File
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 
+import com.devson.nosvedplayerkmp.player.mpv.render.AspectRatioMode
+import com.devson.nosvedplayerkmp.ui.VideoSurface
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun DiagnosticScreen(
@@ -58,6 +61,8 @@ fun DiagnosticScreen(
     modifier: Modifier = Modifier
 ) {
     val coroutineScope = rememberCoroutineScope()
+    var aspectRatioMode by remember { mutableStateOf(AspectRatioMode.FIT) }
+
 
     val playbackState by player.playbackState.collectAsState()
     val position by player.position.collectAsState()
@@ -105,13 +110,13 @@ fun DiagnosticScreen(
             ) {
                 Column {
                     Text(
-                        text = "Nosved Player — MPV Test",
+                        text = "Nosved Player — Video Display",
                         color = Color.White,
                         fontSize = 22.sp,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "Phase 1 Core Playback Engine Diagnostic",
+                        text = "Phase 2 Native Video Rendering & Compose Integration",
                         color = Color(0xFF888899),
                         fontSize = 13.sp
                     )
@@ -134,6 +139,35 @@ fun DiagnosticScreen(
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2A60E4))
                 ) {
                     Text("Open Video", color = Color.White)
+                }
+            }
+
+            // Native Video Surface Container
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color.Black),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(440.dp)
+                    .border(1.dp, Color(0xFF2C2C35), RoundedCornerShape(12.dp))
+            ) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    VideoSurface(
+                        player = player,
+                        modifier = Modifier.fillMaxSize(),
+                        aspectRatioMode = aspectRatioMode
+                    )
+
+                    if (currentMedia == null) {
+                        Text(
+                            text = "No Video Loaded — Select a sample or click Open Video",
+                            color = Color(0xFF666677),
+                            fontSize = 14.sp
+                        )
+                    }
                 }
             }
 
@@ -187,6 +221,7 @@ fun DiagnosticScreen(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
+
                     // File name
                     Text(
                         text = "File: ${currentMedia?.uri?.let { File(it).name } ?: "None loaded"}",
@@ -365,6 +400,31 @@ fun DiagnosticScreen(
                             }
                         }
                     }
+
+                    // Aspect Ratio Controls
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = "Aspect Ratio:",
+                            color = Color.White,
+                            modifier = Modifier.width(100.dp),
+                            fontSize = 13.sp
+                        )
+                        for (mode in AspectRatioMode.values()) {
+                            OutlinedButton(
+                                onClick = { aspectRatioMode = mode },
+                                shape = RoundedCornerShape(6.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    contentColor = if (aspectRatioMode == mode) Color(0xFF4CAF50) else Color(0xFFAAAAAA)
+                                )
+                            ) {
+                                Text(mode.name, fontSize = 11.sp)
+                            }
+                        }
+                    }
                 }
             }
 
@@ -394,17 +454,18 @@ fun DiagnosticScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "MPV: Initialized",
+                    text = "MPV: Initialized (GPU Render VO: Active)",
                     color = Color(0xFF4CAF50),
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = "libmpv API: 0x20005 (x64 Windows)",
+                    text = "libmpv API: 0x20005 (x64 Windows OpenGL)",
                     color = Color(0xFF777777),
                     fontSize = 12.sp
                 )
             }
+
         }
     }
 }

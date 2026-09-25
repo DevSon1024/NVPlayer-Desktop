@@ -67,6 +67,17 @@ internal object MpvLibraryLoader {
     }
 
     /**
+     * Loads the render.h native library bindings.
+     */
+    fun loadRenderNative(): com.devson.nosvedplayerkmp.player.mpv.render.LibMpvRenderNative {
+        val dllFile = resolveDllFile()
+        val loadOptions = mapOf(com.sun.jna.Library.OPTION_STRING_ENCODING to "UTF-8")
+        val dllPath = dllFile?.absolutePath ?: LIB_NAME
+        return Native.load(dllPath, com.devson.nosvedplayerkmp.player.mpv.render.LibMpvRenderNative::class.java, loadOptions)
+    }
+
+
+    /**
      * Validates that the current host OS is Windows and architecture is 64-bit (x64/amd64).
      */
     private fun validatePlatform() {
@@ -89,7 +100,7 @@ internal object MpvLibraryLoader {
     /**
      * Locates the libmpv-2.dll file across known candidate directories.
      */
-    private fun resolveDllFile(): File? {
+    internal fun resolveDllFile(): File? {
         val candidatePaths = collectSearchPaths()
         for (candidate in candidatePaths) {
             if (candidate.exists() && candidate.isFile) {
