@@ -18,6 +18,10 @@ dependencies {
 compose.desktop {
     application {
         mainClass = "com.devson.nosvedplayerkmp.MainKt"
+        val nativeMpvDir = rootProject.file("native/mpv/windows/x64")
+        if (nativeMpvDir.exists()) {
+            jvmArgs += listOf("-Djna.library.path=${nativeMpvDir.absolutePath}")
+        }
 
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
