@@ -9,10 +9,12 @@ import com.devson.nosvedplayerkmp.player.mpv.native.MpvEventId
 import com.devson.nosvedplayerkmp.player.mpv.native.MpvEventLogMessageNative
 import com.devson.nosvedplayerkmp.player.mpv.native.MpvEventNative
 import com.devson.nosvedplayerkmp.player.mpv.native.MpvEventPropertyNative
+import com.devson.nosvedplayerkmp.player.mpv.native.MpvEventStartFileNative
 import com.devson.nosvedplayerkmp.player.mpv.native.MpvFormat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
@@ -68,7 +70,7 @@ class MpvEventHandler(
 
             val event = try {
                 MpvEventNative(eventPtr)
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 continue
             }
 
@@ -90,7 +92,14 @@ class MpvEventHandler(
 
             when (event.event_id) {
                 MpvEventId.START_FILE -> {
-                    _events.tryEmit(PlayerEvent.FileStarted(playlistEntryId = 0L))
+                    val entryId = event.data?.let {
+                        try {
+                            MpvEventStartFileNative(it).playlist_entry_id
+                        } catch (e: Throwable) {
+                            0L
+                        }
+                    } ?: 0L
+                    _events.tryEmit(PlayerEvent.FileStarted(playlistEntryId = entryId))
                 }
 
                 MpvEventId.FILE_LOADED -> {
@@ -101,7 +110,7 @@ class MpvEventHandler(
                     val endFileData = event.data?.let {
                         try {
                             MpvEventEndFileNative(it)
-                        } catch (e: Exception) {
+                        } catch (e: Throwable) {
                             null
                         }
                     }
@@ -125,14 +134,22 @@ class MpvEventHandler(
                     val prop = event.data?.let {
                         try {
                             MpvEventPropertyNative(it)
-                        } catch (e: Exception) {
+                        } catch (e: Throwable) {
                             null
                         }
                     }
 
-                    if (prop != null && prop.name != null) {
+                    val propName = prop?.name?.let {
+                        try {
+                            it.getString(0, "UTF-8")
+                        } catch (e: Throwable) {
+                            null
+                        }
+                    }
+
+                    if (prop != null && propName != null) {
                         val parsedValue = extractPropertyValue(prop)
-                        _events.tryEmit(PlayerEvent.PropertyChanged(prop.name!!, parsedValue))
+                        _events.tryEmit(PlayerEvent.PropertyChanged(propName, parsedValue))
                     }
                 }
 
@@ -140,16 +157,19 @@ class MpvEventHandler(
                     val log = event.data?.let {
                         try {
                             MpvEventLogMessageNative(it)
-                        } catch (e: Exception) {
+                        } catch (e: Throwable) {
                             null
                         }
                     }
                     if (log != null) {
+                        val prefix = log.prefix?.let { try { it.getString(0, "UTF-8") } catch (_: Throwable) { "" } } ?: ""
+                        val level = log.level?.let { try { it.getString(0, "UTF-8") } catch (_: Throwable) { "" } } ?: ""
+                        val text = log.text?.let { try { it.getString(0, "UTF-8") } catch (_: Throwable) { "" } } ?: ""
                         _events.tryEmit(
                             PlayerEvent.LogMessage(
-                                prefix = log.prefix ?: "",
-                                level = log.level ?: "",
-                                message = log.text?.trimEnd() ?: ""
+                                prefix = prefix,
+                                level = level,
+                                message = text.trimEnd()
                             )
                         )
                     }
@@ -168,22 +188,38 @@ class MpvEventHandler(
      */
     private fun extractPropertyValue(prop: MpvEventPropertyNative): Any? {
         val dataPtr = prop.data ?: return null
-        return when (prop.format) {
-            MpvFormat.FLAG -> dataPtr.getInt(0) == 1
-            MpvFormat.INT64 -> dataPtr.getLong(0)
-            MpvFormat.DOUBLE -> dataPtr.getDouble(0)
-            MpvFormat.STRING -> {
-                val strPtr = dataPtr.getPointer(0)
-                strPtr?.getString(0, "UTF-8")
+        return try {
+            when (prop.format) {
+                MpvFormat.FLAG -> dataPtr.getInt(0) == 1
+                MpvFormat.INT64 -> dataPtr.getLong(0)
+                MpvFormat.DOUBLE -> dataPtr.getDouble(0)
+                MpvFormat.STRING -> {
+                    val strPtr = dataPtr.getPointer(0)
+                    strPtr?.getString(0, "UTF-8")
+                }
+                else -> null
             }
-            else -> null
+        } catch (e: Throwable) {
+            null
         }
     }
 
     /**
-     * Interrupts and stops the event loop.
+     * Interrupts and stops the event loop, waiting until the loop coroutine has finished.
      */
-    fun stop() {
+    suspend fun stop() {
+        if (isRunning.compareAndSet(true, false)) {
+            try {
+                if (instance.isInitialized) {
+                    instance.native.mpv_wakeup(instance.rawHandle)
+                }
+            } catch (_: Exception) {}
+            eventJob?.cancelAndJoin()
+            eventJob = null
+        }
+    }
+
+    override fun close() {
         if (isRunning.compareAndSet(true, false)) {
             try {
                 if (instance.isInitialized) {
@@ -193,9 +229,5 @@ class MpvEventHandler(
             eventJob?.cancel()
             eventJob = null
         }
-    }
-
-    override fun close() {
-        stop()
     }
 }

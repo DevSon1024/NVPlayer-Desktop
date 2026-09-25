@@ -47,9 +47,9 @@ fun main(args: Array<String>) {
                 }
                 exitApplication()
             },
-            title = "Nosved Player - Phase 0 Foundation",
+            title = "Nosved Player — MPV Test (Phase 1)",
         ) {
-            App()
+            DiagnosticScreen(player = player)
         }
     }
 }

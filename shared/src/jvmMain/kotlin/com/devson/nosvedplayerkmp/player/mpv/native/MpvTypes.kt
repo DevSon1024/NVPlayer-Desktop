@@ -26,7 +26,7 @@ open class MpvEventNative(p: Pointer? = null) : Structure(p) {
  */
 @Structure.FieldOrder("name", "format", "data")
 open class MpvEventPropertyNative(p: Pointer? = null) : Structure(p) {
-    @JvmField var name: String? = null
+    @JvmField var name: Pointer? = null
     @JvmField var format: Int = 0
     @JvmField var data: Pointer? = null
 
@@ -58,13 +58,28 @@ open class MpvEventEndFileNative(p: Pointer? = null) : Structure(p) {
 }
 
 /**
+ * Native C structure representing an mpv_event_start_file.
+ */
+@Structure.FieldOrder("playlist_entry_id")
+open class MpvEventStartFileNative(p: Pointer? = null) : Structure(p) {
+    @JvmField var playlist_entry_id: Long = 0L
+
+    init {
+        p?.let {
+            useMemory(it)
+            read()
+        }
+    }
+}
+
+/**
  * Native C structure representing an mpv_event_log_message.
  */
 @Structure.FieldOrder("prefix", "level", "text", "log_level")
 open class MpvEventLogMessageNative(p: Pointer? = null) : Structure(p) {
-    @JvmField var prefix: String? = null
-    @JvmField var level: String? = null
-    @JvmField var text: String? = null
+    @JvmField var prefix: Pointer? = null
+    @JvmField var level: Pointer? = null
+    @JvmField var text: Pointer? = null
     @JvmField var log_level: Int = 0
 
     init {

@@ -27,11 +27,17 @@ class AndroidMpvPlayer : Player {
     private val _duration = MutableStateFlow(Duration.ZERO)
     override val duration: StateFlow<Duration> = _duration.asStateFlow()
 
+    private val _progress = MutableStateFlow(0f)
+    override val progress: StateFlow<Float> = _progress.asStateFlow()
+
     private val _volume = MutableStateFlow(100f)
     override val volume: StateFlow<Float> = _volume.asStateFlow()
 
     private val _playbackSpeed = MutableStateFlow(1f)
     override val playbackSpeed: StateFlow<Float> = _playbackSpeed.asStateFlow()
+
+    private val _currentMediaItem = MutableStateFlow<MediaItem?>(null)
+    override val currentMediaItem: StateFlow<MediaItem?> = _currentMediaItem.asStateFlow()
 
     private val _errors = MutableSharedFlow<PlayerError>()
     override val errors: Flow<PlayerError> = _errors.asSharedFlow()
@@ -40,11 +46,11 @@ class AndroidMpvPlayer : Player {
     override val events: Flow<PlayerEvent> = _events.asSharedFlow()
 
     override suspend fun initialize() {
-        // Stub for Phase 0
+        // Stub for Android Phase 1
     }
 
     override suspend fun loadMedia(mediaItem: MediaItem, autoPlay: Boolean) {
-        throw UnsupportedOperationException("Android player is not implemented in Phase 0")
+        throw UnsupportedOperationException("Android player is not implemented in Phase 1")
     }
 
     override suspend fun play() {}
@@ -54,6 +60,8 @@ class AndroidMpvPlayer : Player {
     override suspend fun stop() {}
 
     override suspend fun seekTo(position: Duration) {}
+
+    override suspend fun seekRelative(seconds: Double) {}
 
     override suspend fun setVolume(volume: Float) {
         _volume.value = volume

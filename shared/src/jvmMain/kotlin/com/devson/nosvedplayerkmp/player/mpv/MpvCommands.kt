@@ -89,4 +89,16 @@ object MpvCommands {
      */
     fun seek(instance: MpvInstance, seconds: Double, mode: String = "absolute"): Result<Unit> =
         execute(instance, "seek", seconds.toString(), mode)
+
+    /**
+     * Seeks to an absolute timestamp in seconds.
+     */
+    fun seekAbsolute(instance: MpvInstance, seconds: Double): Result<Unit> =
+        seek(instance, seconds, "absolute")
+
+    /**
+     * Seeks relative to the current position in seconds (+ forward, - backward).
+     */
+    fun seekRelative(instance: MpvInstance, seconds: Double): Result<Unit> =
+        seek(instance, seconds, "relative")
 }

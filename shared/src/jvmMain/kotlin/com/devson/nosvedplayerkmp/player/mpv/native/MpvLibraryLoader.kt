@@ -34,14 +34,15 @@ internal object MpvLibraryLoader {
             validatePlatform()
 
             val dllFile = resolveDllFile()
+            val loadOptions = mapOf(com.sun.jna.Library.OPTION_STRING_ENCODING to "UTF-8")
             val nativeLib = try {
                 if (dllFile != null && dllFile.exists()) {
                     val parentDir = dllFile.parentFile.absolutePath
                     NativeLibrary.addSearchPath(LIB_NAME, parentDir)
-                    Native.load(dllFile.absolutePath, LibMpvNative::class.java)
+                    Native.load(dllFile.absolutePath, LibMpvNative::class.java, loadOptions)
                 } else {
                     // Fall back to default JNA search path
-                    Native.load(LIB_NAME, LibMpvNative::class.java)
+                    Native.load(LIB_NAME, LibMpvNative::class.java, loadOptions)
                 }
             } catch (e: UnsatisfiedLinkError) {
                 val searched = collectSearchPaths().map { it.absolutePath }
