@@ -42,6 +42,10 @@ interface Player {
     /** Stream of low-level and high-level player events. */
     val events: Flow<PlayerEvent>
 
+    /** Whether this player instance requires native surface rendering. */
+    val requiresNativeSurface: Boolean
+        get() = false
+
     /**
      * Initializes the underlying player engine and prepares it for playback.
      */

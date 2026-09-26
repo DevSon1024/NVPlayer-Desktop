@@ -13,8 +13,10 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
@@ -35,6 +37,25 @@ class PlayerViewModel(
 
     private val _uiState = MutableStateFlow(PlayerUiState())
     val uiState: StateFlow<PlayerUiState> = _uiState.asStateFlow()
+
+    private val _isSurfaceAttached = MutableStateFlow(false)
+    val isSurfaceAttached: StateFlow<Boolean> = _isSurfaceAttached.asStateFlow()
+
+    fun setSurfaceAttached(attached: Boolean) {
+        _isSurfaceAttached.value = attached
+    }
+
+    fun prepareForPlayback(path: String, title: String? = null) {
+        _uiState.update { current ->
+            current.copy(
+                mediaPath = path,
+                mediaTitle = title ?: File(path).name,
+                playbackState = PlaybackState.LOADING,
+                errorMessage = null,
+                errorDetails = null
+            )
+        }
+    }
 
     private var autoHideJob: Job? = null
 
@@ -259,6 +280,12 @@ class PlayerViewModel(
     fun openFile(path: String) {
         scope.launch {
             _uiState.update { it.copy(errorMessage = null, errorDetails = null) }
+            prepareForPlayback(path)
+            if (player.requiresNativeSurface && !_isSurfaceAttached.value) {
+                withTimeoutOrNull(5000) {
+                    _isSurfaceAttached.first { it }
+                }
+            }
             try {
                 player.load(path, autoPlay = true)
             } catch (e: Exception) {

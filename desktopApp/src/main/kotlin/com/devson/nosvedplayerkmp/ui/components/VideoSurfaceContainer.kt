@@ -33,6 +33,7 @@ fun VideoSurfaceContainer(
     onDoubleClick: () -> Unit,
     onMouseMove: () -> Unit,
     onMouseWheel: (Float) -> Unit,
+    onSurfaceAttached: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Box(
@@ -45,7 +46,6 @@ fun VideoSurfaceContainer(
             .onPointerEvent(PointerEventType.Scroll) { event ->
                 val deltaY = event.changes.firstOrNull()?.scrollDelta?.y ?: 0f
                 if (deltaY != 0f) {
-                    // Scrolling up delta is negative -> increase volume
                     onMouseWheel(-deltaY * 5f)
                 }
             }
@@ -63,6 +63,11 @@ fun VideoSurfaceContainer(
         VideoSurface(
             player = player,
             aspectRatioMode = aspectRatioMode,
+            onSurfaceAttached = onSurfaceAttached,
+            onSingleClick = onSingleClick,
+            onDoubleClick = onDoubleClick,
+            onMouseMove = onMouseMove,
+            onMouseWheel = onMouseWheel,
             modifier = Modifier.fillMaxSize()
         )
     }

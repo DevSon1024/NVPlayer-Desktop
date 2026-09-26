@@ -30,6 +30,7 @@ class WindowsGlVideoRenderer(
     private val surfaceWidth = AtomicInteger(640)
     private val surfaceHeight = AtomicInteger(480)
     private val forceRedraw = AtomicBoolean(false)
+    val renderedFramesCount = AtomicInteger(0)
 
     @Volatile
     private var renderThread: Thread? = null
@@ -112,13 +113,16 @@ class WindowsGlVideoRenderer(
         var renderNative: LibMpvRenderNative? = null
 
         try {
-            val pfd = Win32PixelFormatDescriptor()
-            val pixelFormat = gdi32.ChoosePixelFormat(hdc, pfd)
+            var pixelFormat = gdi32.GetPixelFormat(hdc)
             if (pixelFormat <= 0) {
-                throw IllegalStateException("ChoosePixelFormat failed")
-            }
-            if (!gdi32.SetPixelFormat(hdc, pixelFormat, pfd)) {
-                throw IllegalStateException("SetPixelFormat failed")
+                val pfd = Win32PixelFormatDescriptor()
+                pixelFormat = gdi32.ChoosePixelFormat(hdc, pfd)
+                if (pixelFormat <= 0) {
+                    throw IllegalStateException("ChoosePixelFormat failed")
+                }
+                if (!gdi32.SetPixelFormat(hdc, pixelFormat, pfd)) {
+                    throw IllegalStateException("SetPixelFormat failed")
+                }
             }
 
             hglrc = opengl32.wglCreateContext(hdc)
@@ -226,6 +230,9 @@ class WindowsGlVideoRenderer(
                     if (status >= 0) {
                         gdi32.SwapBuffers(hdc)
                         loadedRender.mpv_render_context_report_swap(ctx)
+                        renderedFramesCount.incrementAndGet()
+                    } else {
+                        System.err.println("[WindowsGlVideoRenderer] mpv_render_context_render failed: $status")
                     }
                 }
             }

@@ -81,6 +81,9 @@ class MpvPlayer(
     val rawMpvHandle: Pointer?
         get() = mpvInstance?.rawHandle
 
+    override val requiresNativeSurface: Boolean
+        get() = true
+
     override suspend fun initialize(): Unit = withContext(Dispatchers.IO) {
         mutex.withLock {
             if (mpvInstance?.isInitialized == true) return@withLock

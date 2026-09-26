@@ -32,10 +32,12 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -233,15 +235,23 @@ class AppViewModel(
             }
 
             activeMediaFile = media
+
+            // Navigate to Player screen first and prepare state
+            playerViewModel.prepareForPlayback(media.path, media.title)
+            _currentScreen.value = Screen.Player
+
+            if (player.requiresNativeSurface && !playerViewModel.isSurfaceAttached.value) {
+                withTimeoutOrNull(5000) {
+                    playerViewModel.isSurfaceAttached.first { it }
+                }
+            }
+
             player.load(media.path, autoPlay = true)
 
             if (resumePositionMs != null && resumePositionMs > 1000L) {
                 delay(300)
                 player.seekTo(resumePositionMs.milliseconds)
             }
-
-            // Navigate to Player Screen
-            _currentScreen.value = Screen.Player
         }
     }
 
@@ -250,8 +260,16 @@ class AppViewModel(
         if (item != null) {
             scope.launch {
                 activeMediaFile = item.media
-                player.load(item.media.path, autoPlay = true)
+                playerViewModel.prepareForPlayback(item.media.path, item.media.title)
                 _currentScreen.value = Screen.Player
+
+                if (player.requiresNativeSurface && !playerViewModel.isSurfaceAttached.value) {
+                    withTimeoutOrNull(5000) {
+                        playerViewModel.isSurfaceAttached.first { it }
+                    }
+                }
+
+                player.load(item.media.path, autoPlay = true)
             }
         }
     }

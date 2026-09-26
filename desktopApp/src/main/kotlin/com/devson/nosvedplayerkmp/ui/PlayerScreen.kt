@@ -1,11 +1,14 @@
 package com.devson.nosvedplayerkmp.ui
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -45,6 +48,9 @@ import java.awt.Frame
 
 /**
  * Main desktop player screen unifying video display, overlays, controls, and shortcut routing.
+ *
+ * Employs a docked Column layout to guarantee that heavyweight native rendering surfaces
+ * do not clip or occlude Compose lightweight controls and overlays.
  */
 @Composable
 fun PlayerScreen(
@@ -58,7 +64,6 @@ fun PlayerScreen(
 
     fun launchFileDialog() {
         val dialog = FileDialog(null as Frame?, "Open Video File", FileDialog.LOAD).apply {
-            // Note: AWT FileDialog on Windows filters by filename pattern
             file = "*.mp4;*.mkv;*.avi;*.mov;*.webm;*.flv;*.wmv;*.ts;*.m4v"
             isVisible = true
         }
@@ -74,7 +79,7 @@ fun PlayerScreen(
         focusRequester.requestFocus()
     }
 
-    Box(
+    Column(
         modifier = modifier
             .fillMaxSize()
             .background(Color.Black)
@@ -94,31 +99,11 @@ fun PlayerScreen(
                 }
             }
     ) {
-        // 1. Video Rendering Surface
-        VideoSurfaceContainer(
-            player = viewModel.player,
-            aspectRatioMode = uiState.aspectRatioMode,
-            onSingleClick = { viewModel.togglePlayPause() },
-            onDoubleClick = { viewModel.toggleFullscreen() },
-            onMouseMove = { viewModel.onUserActivity() },
-            onMouseWheel = { delta -> viewModel.adjustVolume(delta) },
-            modifier = Modifier.fillMaxSize()
-        )
-
-        // 2. Empty State (When no video is loaded)
-        if (!uiState.isMediaLoaded) {
-            EmptyState(
-                onOpenFile = { launchFileDialog() },
-                modifier = Modifier.fillMaxSize()
-            )
-        }
-
-        // 3. Top Title Bar Overlay (Shows when controls are active)
+        // 1. Top Title Bar (Docked above video viewport; auto-hides during playback)
         AnimatedVisibility(
             visible = uiState.areControlsVisible && uiState.isMediaLoaded,
-            enter = fadeIn(),
-            exit = fadeOut(),
-            modifier = Modifier.align(Alignment.TopCenter)
+            enter = fadeIn() + expandVertically(),
+            exit = fadeOut() + shrinkVertically()
         ) {
             Box(
                 modifier = Modifier
@@ -164,38 +149,76 @@ fun PlayerScreen(
             }
         }
 
-        // 4. Loading Overlay (Buffering / initializing)
-        LoadingOverlay(
-            isLoading = uiState.isLoading,
-            modifier = Modifier.align(Alignment.Center)
-        )
+        // Error Banner docked above video viewport so it is never occluded by native HWND
+        if (uiState.errorMessage != null) {
+            ErrorOverlay(
+                errorMessage = uiState.errorMessage,
+                errorDetails = uiState.errorDetails,
+                onDismiss = { viewModel.dismissError() },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp, vertical = 8.dp)
+            )
+        }
 
-        // 5. Error Overlay (Dismissible floating banner)
-        ErrorOverlay(
-            errorMessage = uiState.errorMessage,
-            errorDetails = uiState.errorDetails,
-            onDismiss = { viewModel.dismissError() },
-            modifier = Modifier.align(Alignment.TopCenter).padding(top = 40.dp)
-        )
+        // 2. Video Viewport & Overlays (Expands to full height when controls auto-hide)
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .background(Color.Black)
+        ) {
+            if (uiState.isMediaLoaded) {
+                VideoSurfaceContainer(
+                    player = viewModel.player,
+                    aspectRatioMode = uiState.aspectRatioMode,
+                    onSurfaceAttached = { attached -> viewModel.setSurfaceAttached(attached) },
+                    onSingleClick = { viewModel.togglePlayPause() },
+                    onDoubleClick = { viewModel.toggleFullscreen() },
+                    onMouseMove = { viewModel.onUserActivity() },
+                    onMouseWheel = { delta -> viewModel.adjustVolume(delta) },
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                EmptyState(
+                    onOpenFile = { launchFileDialog() },
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
 
-        // 6. Bottom Playback Controls Overlay
-        PlayerControls(
-            uiState = uiState,
-            onPlay = { viewModel.play() },
-            onPause = { viewModel.pause() },
-            onTogglePlayPause = { viewModel.togglePlayPause() },
-            onStop = { viewModel.stop() },
-            onSeekRelative = { viewModel.seekRelative(it) },
-            onScrubStart = { viewModel.onScrubStart(it) },
-            onScrubMove = { viewModel.onScrubMove(it) },
-            onScrubEnd = { viewModel.onScrubEnd(it) },
-            onVolumeChanged = { viewModel.setVolume(it) },
-            onToggleMute = { viewModel.toggleMute() },
-            onSpeedSelected = { viewModel.setSpeed(it) },
-            onAspectRatioSelected = { viewModel.setAspectRatio(it) },
-            onToggleFullscreen = { viewModel.toggleFullscreen() },
-            onOpenFile = { launchFileDialog() },
-            modifier = Modifier.align(Alignment.BottomCenter)
-        )
+            // Loading Overlay (Buffering / initializing)
+            if (uiState.isLoading && !uiState.isMediaLoaded) {
+                LoadingOverlay(
+                    isLoading = true,
+                    modifier = Modifier.align(Alignment.Center)
+                )
+            }
+        }
+
+        // 3. Bottom Playback Controls (Docked below video viewport; auto-hides during playback)
+        AnimatedVisibility(
+            visible = uiState.areControlsVisible && uiState.isMediaLoaded,
+            enter = fadeIn() + expandVertically(),
+            exit = fadeOut() + shrinkVertically()
+        ) {
+            PlayerControls(
+                uiState = uiState,
+                onPlay = { viewModel.play() },
+                onPause = { viewModel.pause() },
+                onTogglePlayPause = { viewModel.togglePlayPause() },
+                onStop = { viewModel.stop() },
+                onSeekRelative = { viewModel.seekRelative(it) },
+                onScrubStart = { viewModel.onScrubStart(it) },
+                onScrubMove = { viewModel.onScrubMove(it) },
+                onScrubEnd = { viewModel.onScrubEnd(it) },
+                onVolumeChanged = { viewModel.setVolume(it) },
+                onToggleMute = { viewModel.toggleMute() },
+                onSpeedSelected = { viewModel.setSpeed(it) },
+                onAspectRatioSelected = { viewModel.setAspectRatio(it) },
+                onToggleFullscreen = { viewModel.toggleFullscreen() },
+                onOpenFile = { launchFileDialog() },
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
     }
 }

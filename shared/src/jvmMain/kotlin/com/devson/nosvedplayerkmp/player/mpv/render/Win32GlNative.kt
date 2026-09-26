@@ -53,6 +53,7 @@ internal interface Win32User32 : Library {
 internal interface Win32Gdi32 : Library {
     fun ChoosePixelFormat(hdc: Pointer, pfd: Win32PixelFormatDescriptor): Int
     fun SetPixelFormat(hdc: Pointer, format: Int, pfd: Win32PixelFormatDescriptor): Boolean
+    fun GetPixelFormat(hdc: Pointer): Int
     fun SwapBuffers(hdc: Pointer): Boolean
 }
 
@@ -65,6 +66,7 @@ internal interface Win32Opengl32 : Library {
 
 internal interface Win32Kernel32 : Library {
     fun GetModuleHandleA(name: String?): Pointer?
+    fun LoadLibraryA(name: String): Pointer?
     fun GetProcAddress(module: Pointer?, name: String): Pointer?
 }
 
@@ -73,7 +75,9 @@ internal object Win32GlInterop {
     val gdi32: Win32Gdi32 by lazy { Native.load("gdi32", Win32Gdi32::class.java) }
     val opengl32: Win32Opengl32 by lazy { Native.load("opengl32", Win32Opengl32::class.java) }
     val kernel32: Win32Kernel32 by lazy { Native.load("kernel32", Win32Kernel32::class.java) }
-    val openglModule: Pointer? by lazy { kernel32.GetModuleHandleA("opengl32.dll") }
+    val openglModule: Pointer? by lazy {
+        kernel32.GetModuleHandleA("opengl32.dll") ?: kernel32.LoadLibraryA("opengl32.dll")
+    }
 
     /**
      * Resolves an OpenGL function pointer using wglGetProcAddress with a fallback
