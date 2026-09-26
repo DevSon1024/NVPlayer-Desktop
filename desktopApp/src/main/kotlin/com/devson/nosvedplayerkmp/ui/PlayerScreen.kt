@@ -12,6 +12,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -44,6 +49,7 @@ import java.awt.Frame
 @Composable
 fun PlayerScreen(
     viewModel: PlayerViewModel,
+    onBack: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -121,6 +127,18 @@ fun PlayerScreen(
                     .padding(horizontal = 24.dp, vertical = 14.dp)
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (onBack != null) {
+                        IconButton(
+                            onClick = onBack,
+                            colors = IconButtonDefaults.iconButtonColors(contentColor = PlayerTheme.TextPrimary)
+                        ) {
+                            Icon(
+                                Icons.AutoMirrored.Rounded.ArrowBack,
+                                contentDescription = "Return to library"
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                    }
                     Text(
                         text = "Nosved Player",
                         color = PlayerTheme.PrimaryAccent,

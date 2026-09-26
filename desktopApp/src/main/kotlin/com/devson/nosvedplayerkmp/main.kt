@@ -13,10 +13,15 @@ import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import com.devson.nosvedplayerkmp.player.core.createPlatformPlayer
-import com.devson.nosvedplayerkmp.ui.PlayerScreen
+import com.devson.nosvedplayerkmp.ui.AppShell
 import com.devson.nosvedplayerkmp.ui.dragdrop.FileDropHandler
+import com.devson.nosvedplayerkmp.ui.state.AppViewModel
 import com.devson.nosvedplayerkmp.ui.state.PlayerViewModel
+import com.devson.nosvedplayerkmp.ui.theme.NosvedTheme
 import kotlinx.coroutines.runBlocking
+import java.awt.FileDialog
+import java.awt.Frame
+import java.io.File
 
 fun main(args: Array<String>) {
     println("[Nosved Player] Starting Windows Desktop Application...")
@@ -55,15 +60,46 @@ fun main(args: Array<String>) {
 
     application {
         val windowState = rememberWindowState(
-            size = DpSize(1280.dp, 720.dp),
+            size = DpSize(1280.dp, 760.dp),
             position = WindowPosition(Alignment.Center)
         )
-        val viewModel = remember { PlayerViewModel(player = player) }
-        val uiState by viewModel.uiState.collectAsState()
+
+        fun launchFileDialog(onSelected: (String) -> Unit) {
+            val dialog = FileDialog(null as Frame?, "Open Video File", FileDialog.LOAD).apply {
+                file = "*.mp4;*.mkv;*.avi;*.mov;*.webm;*.flv;*.wmv;*.ts;*.m4v;*.mpeg;*.mpg"
+                isVisible = true
+            }
+            val dir = dialog.directory
+            val file = dialog.file
+            if (dir != null && file != null) {
+                onSelected(File(dir, file).absolutePath)
+            }
+        }
+
+        lateinit var pvm: PlayerViewModel
+        val playerViewModel = remember {
+            PlayerViewModel(
+                player = player,
+                onOpenFileRequested = {
+                    // Open file requested via keyboard shortcut (Ctrl+O)
+                    launchFileDialog { path -> pvm.openFile(path) }
+                }
+            ).also { pvm = it }
+        }
+
+        val appViewModel = remember {
+            AppViewModel(
+                player = player,
+                playerViewModel = playerViewModel
+            )
+        }
+
+        val playerUiState by playerViewModel.uiState.collectAsState()
+        val themeMode by appViewModel.themeMode.collectAsState()
 
         // Sync Fullscreen state with Window placement
-        LaunchedEffect(uiState.isFullscreen) {
-            windowState.placement = if (uiState.isFullscreen) {
+        LaunchedEffect(playerUiState.isFullscreen) {
+            windowState.placement = if (playerUiState.isFullscreen) {
                 WindowPlacement.Fullscreen
             } else {
                 WindowPlacement.Floating
@@ -71,20 +107,21 @@ fun main(args: Array<String>) {
         }
 
         LaunchedEffect(windowState.placement) {
-            if (windowState.placement != WindowPlacement.Fullscreen && uiState.isFullscreen) {
-                viewModel.exitFullscreen()
+            if (windowState.placement != WindowPlacement.Fullscreen && playerUiState.isFullscreen) {
+                playerViewModel.exitFullscreen()
             }
         }
 
-        val windowTitle = if (!uiState.mediaTitle.isNullOrBlank()) {
-            "${uiState.mediaTitle} — Nosved Player"
+        val windowTitle = if (!playerUiState.mediaTitle.isNullOrBlank()) {
+            "${playerUiState.mediaTitle} — Nosved Player"
         } else {
             "Nosved Player"
         }
 
         Window(
             onCloseRequest = {
-                viewModel.release()
+                appViewModel.release()
+                playerViewModel.release()
                 runBlocking {
                     player.release()
                     println("mpv instance released cleanly")
@@ -98,17 +135,26 @@ fun main(args: Array<String>) {
             LaunchedEffect(window) {
                 try {
                     FileDropHandler { droppedPath ->
-                        viewModel.openFile(droppedPath)
+                        appViewModel.openFile(droppedPath)
                     }.attachTo(window)
                 } catch (e: Exception) {
                     System.err.println("[Nosved Player] Could not attach DropTarget: ${e.message}")
                 }
             }
 
-            if (useDiagnosticsScreen) {
-                DiagnosticScreen(player = player)
-            } else {
-                PlayerScreen(viewModel = viewModel)
+            NosvedTheme(themeMode = themeMode) {
+                if (useDiagnosticsScreen) {
+                    DiagnosticScreen(player = player)
+                } else {
+                    AppShell(
+                        appViewModel = appViewModel,
+                        onOpenFile = {
+                            launchFileDialog { selectedPath ->
+                                appViewModel.openFile(selectedPath)
+                            }
+                        }
+                    )
+                }
             }
         }
     }
