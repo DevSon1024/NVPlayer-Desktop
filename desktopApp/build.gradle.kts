@@ -11,9 +11,13 @@ dependencies {
 
     implementation(compose.desktop.currentOs)
     implementation(libs.compose.material3)
+    implementation(compose.materialIconsExtended)
     implementation(libs.kotlinx.coroutinesSwing)
 
     implementation(libs.compose.uiToolingPreview)
+
+    testImplementation(libs.kotlin.test)
+    testImplementation(libs.kotlinx.coroutines.test)
 }
 
 compose.desktop {
