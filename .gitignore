@@ -20,3 +20,7 @@ node_modules/
 /native/
 *Test.kt
 update_details.md
+/*.txt
+/*.log
+/*.mp4
+/*.mkv

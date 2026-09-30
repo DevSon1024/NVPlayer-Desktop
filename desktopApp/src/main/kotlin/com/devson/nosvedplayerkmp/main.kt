@@ -3,7 +3,9 @@ package com.devson.nosvedplayerkmp
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
@@ -24,6 +26,7 @@ import java.awt.Frame
 import java.io.File
 
 fun main(args: Array<String>) {
+    System.setProperty("sun.awt.noerasebackground", "true")
     println("[Nosved Player] Starting Windows Desktop Application...")
 
     val isDiagnosticsOnly = args.contains("--diagnostics-only") || 
@@ -97,18 +100,19 @@ fun main(args: Array<String>) {
         val playerUiState by playerViewModel.uiState.collectAsState()
         val themeMode by appViewModel.themeMode.collectAsState()
 
-        // Sync Fullscreen state with Window placement
-        LaunchedEffect(playerUiState.isFullscreen) {
-            windowState.placement = if (playerUiState.isFullscreen) {
-                WindowPlacement.Fullscreen
-            } else {
-                WindowPlacement.Floating
-            }
-        }
+        var previousPlacement by remember { mutableStateOf(WindowPlacement.Floating) }
 
-        LaunchedEffect(windowState.placement) {
-            if (windowState.placement != WindowPlacement.Fullscreen && playerUiState.isFullscreen) {
-                playerViewModel.exitFullscreen()
+        // Sync Fullscreen state with Window placement safely
+        LaunchedEffect(playerUiState.isFullscreen) {
+            if (playerUiState.isFullscreen) {
+                if (windowState.placement != WindowPlacement.Fullscreen) {
+                    previousPlacement = windowState.placement
+                    windowState.placement = WindowPlacement.Fullscreen
+                }
+            } else {
+                if (windowState.placement == WindowPlacement.Fullscreen) {
+                    windowState.placement = previousPlacement
+                }
             }
         }
 

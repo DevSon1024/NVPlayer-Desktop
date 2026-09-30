@@ -75,17 +75,17 @@ fun AppShell(
         contentColor = MaterialTheme.colorScheme.onBackground
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            if (playerUiState.isFullscreen) {
-                // In Fullscreen, dedicate full window to player
+            if (playerUiState.isFullscreen || currentScreen is Screen.Player) {
+                // Dedicate full window to player (fullscreen or regular player view)
                 PlayerScreen(
                     viewModel = appViewModel.playerViewModel,
-                    onBack = { appViewModel.playerViewModel.exitFullscreen() }
-                )
-            } else if (currentScreen is Screen.Player) {
-                // Full Player View with Back Arrow
-                PlayerScreen(
-                    viewModel = appViewModel.playerViewModel,
-                    onBack = { appViewModel.navigateTo(Screen.Home) }
+                    onBack = {
+                        if (playerUiState.isFullscreen) {
+                            appViewModel.playerViewModel.exitFullscreen()
+                        } else {
+                            appViewModel.navigateTo(Screen.Home)
+                        }
+                    }
                 )
             } else {
                 // Desktop Application Shell Layout

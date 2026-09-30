@@ -122,7 +122,12 @@ class MpvPlayer(
                     _playbackSpeed.value = it.toFloat()
                 }
 
+                // Log active hardware decode configuration for diagnostics
+                val hwdecActive = MpvProperties.getString(instance, "hwdec").getOrElse { "unknown" }
+                println("[MpvPlayer] hwdec configured: $hwdecActive (auto-copy prefers D3D11VA/DXVA2 on Windows)")
+
                 _playbackState.value = PlaybackState.IDLE
+
             } catch (e: PlayerException) {
                 _playbackState.value = PlaybackState.ERROR
                 _errors.tryEmit(e.error)

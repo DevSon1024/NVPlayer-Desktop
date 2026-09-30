@@ -69,11 +69,11 @@ class PlayerViewModel(
                 _uiState.update { current ->
                     current.copy(
                         playbackState = state,
-                        // Always keep controls visible when stopped, paused, or ended
-                        areControlsVisible = if (state != PlaybackState.PLAYING) true else current.areControlsVisible
+                        // Always keep controls visible when stopped, paused, ended, or in windowed mode
+                        areControlsVisible = if (!current.isFullscreen || state != PlaybackState.PLAYING) true else current.areControlsVisible
                     )
                 }
-                if (state == PlaybackState.PLAYING) {
+                if (state == PlaybackState.PLAYING && _uiState.value.isFullscreen) {
                     scheduleAutoHide()
                 } else {
                     autoHideJob?.cancel()
@@ -150,12 +150,14 @@ class PlayerViewModel(
      */
     fun onUserActivity() {
         _uiState.update { it.copy(areControlsVisible = true) }
-        scheduleAutoHide()
+        if (_uiState.value.isFullscreen) {
+            scheduleAutoHide()
+        }
     }
 
     private fun scheduleAutoHide() {
         autoHideJob?.cancel()
-        if (_uiState.value.playbackState == PlaybackState.PLAYING && !_uiState.value.isScrubbing) {
+        if (_uiState.value.isFullscreen && _uiState.value.playbackState == PlaybackState.PLAYING && !_uiState.value.isScrubbing) {
             autoHideJob = scope.launch {
                 delay(2500)
                 _uiState.update { it.copy(areControlsVisible = false) }
@@ -215,7 +217,9 @@ class PlayerViewModel(
         }
         scope.launch {
             player.seekTo(targetMs.milliseconds)
-            scheduleAutoHide()
+            if (_uiState.value.isFullscreen) {
+                scheduleAutoHide()
+            }
         }
     }
 
@@ -266,14 +270,29 @@ class PlayerViewModel(
     }
 
     fun toggleFullscreen() {
-        _uiState.update { it.copy(isFullscreen = !it.isFullscreen) }
-        onUserActivity()
+        val willBeFullscreen = !_uiState.value.isFullscreen
+        _uiState.update {
+            it.copy(
+                isFullscreen = willBeFullscreen,
+                areControlsVisible = true
+            )
+        }
+        if (willBeFullscreen) {
+            scheduleAutoHide()
+        } else {
+            autoHideJob?.cancel()
+        }
     }
 
     fun exitFullscreen() {
         if (_uiState.value.isFullscreen) {
-            _uiState.update { it.copy(isFullscreen = false) }
-            onUserActivity()
+            autoHideJob?.cancel()
+            _uiState.update {
+                it.copy(
+                    isFullscreen = false,
+                    areControlsVisible = true
+                )
+            }
         }
     }
 
@@ -326,6 +345,11 @@ class PlayerViewModel(
             PlayerAction.OpenFile -> requestOpenFile()
             PlayerAction.ToggleControls -> {
                 _uiState.update { it.copy(areControlsVisible = !it.areControlsVisible) }
+                if (_uiState.value.isFullscreen && _uiState.value.areControlsVisible) {
+                    scheduleAutoHide()
+                } else if (!_uiState.value.areControlsVisible) {
+                    autoHideJob?.cancel()
+                }
             }
         }
     }

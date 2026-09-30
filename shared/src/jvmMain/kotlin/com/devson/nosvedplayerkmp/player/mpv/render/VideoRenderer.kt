@@ -11,6 +11,9 @@ interface VideoRenderer : AutoCloseable {
     /** True if a native surface is currently attached and active. */
     val isAttached: Boolean
 
+    /** Returns true if the renderer is currently attached to the specific native component. */
+    fun isAttachedTo(surface: Component): Boolean
+
     /**
      * Attaches a native GUI component (e.g. [java.awt.Canvas]) to the rendering pipeline.
      */

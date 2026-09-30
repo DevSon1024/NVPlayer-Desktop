@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.awt.SwingPanel
 import androidx.compose.ui.graphics.Color
@@ -16,16 +17,19 @@ import java.awt.BorderLayout
 import java.awt.Canvas
 import java.awt.event.ComponentAdapter
 import java.awt.event.ComponentEvent
+import java.awt.event.HierarchyEvent
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import java.awt.event.MouseMotionAdapter
 import javax.swing.JPanel
 import javax.swing.SwingUtilities
+import javax.swing.Timer
 
 /**
  * Dedicated Compose component for hosting native GPU-accelerated video rendering.
  *
  * Manages the native surface lifecycle, dimensions, aspect ratio synchronization,
+ * dynamic HWND re-attachment across window modes (normal, maximize, fullscreen),
  * and routes native mouse events directly from the Win32 canvas.
  */
 @Composable
@@ -52,7 +56,9 @@ fun VideoSurface(
 
     Box(
         modifier = modifier
-            .background(Color.Black)
+            .fillMaxSize()
+            .background(Color.Black),
+        contentAlignment = Alignment.Center
     ) {
         SwingPanel(
             modifier = Modifier.fillMaxSize(),
@@ -96,69 +102,141 @@ fun VideoSurface(
                     }
                 }
 
-                val panel = JPanel(BorderLayout()).apply {
-                    background = java.awt.Color.BLACK
-                    add(canvas, BorderLayout.CENTER)
-                }
-
-                fun tryAttach() {
-                    if (!renderer.isAttached && canvas.isDisplayable) {
-                        try {
-                            renderer.attachSurface(canvas)
-                            val w = if (canvas.width > 0) canvas.width else 640
-                            val h = if (canvas.height > 0) canvas.height else 480
-                            renderer.setSurfaceSize(w, h)
-                            renderer.setAspectRatioMode(aspectRatioMode)
-                            onSurfaceAttached(true)
-                        } catch (e: Exception) {
-                            System.err.println("[VideoSurface] Error attaching native surface: ${e.message}")
-                        }
-                    }
-                }
+                val host = VideoSurfaceHost(canvas)
 
                 canvas.addComponentListener(object : ComponentAdapter() {
                     override fun componentResized(e: ComponentEvent) {
-                        if (renderer.isAttached) {
-                            if (canvas.width > 0 && canvas.height > 0) {
-                                renderer.setSurfaceSize(canvas.width, canvas.height)
-                            }
+                        if (renderer.isAttachedTo(canvas)) {
+                            renderer.triggerRedraw()
                         } else {
-                            tryAttach()
+                            host.sync(renderer, aspectRatioMode, onSurfaceAttached)
                         }
                     }
 
                     override fun componentShown(e: ComponentEvent) {
-                        tryAttach()
+                        host.sync(renderer, aspectRatioMode, onSurfaceAttached)
                     }
                 })
 
-                canvas.addHierarchyListener {
-                    if (canvas.isDisplayable) {
-                        SwingUtilities.invokeLater {
-                            tryAttach()
+                canvas.addHierarchyListener { e ->
+                    val flags = e.changeFlags
+                    if ((flags and (HierarchyEvent.DISPLAYABILITY_CHANGED.toLong() or HierarchyEvent.SHOWING_CHANGED.toLong())) != 0L) {
+                        if (canvas.isDisplayable) {
+                            host.syncDebounced(renderer, aspectRatioMode, onSurfaceAttached)
+                        } else {
+                            host.onDetached(renderer, onSurfaceAttached)
                         }
                     }
                 }
 
-                panel
-            },
-            update = { panel ->
-                val canvas = panel.getComponent(0) as? Canvas
-                if (canvas != null && canvas.isDisplayable) {
-                    if (!renderer.isAttached) {
-                        try {
-                            renderer.attachSurface(canvas)
-                            onSurfaceAttached(true)
-                        } catch (_: Exception) {}
-                    }
-                    if (renderer.isAttached) {
-                        if (canvas.width > 0 && canvas.height > 0) {
-                            renderer.setSurfaceSize(canvas.width, canvas.height)
+                host.addComponentListener(object : ComponentAdapter() {
+                    override fun componentResized(e: ComponentEvent) {
+                        if (renderer.isAttachedTo(canvas)) {
+                            renderer.triggerRedraw()
+                        } else {
+                            host.sync(renderer, aspectRatioMode, onSurfaceAttached)
                         }
-                        renderer.setAspectRatioMode(aspectRatioMode)
+                    }
+
+                    override fun componentShown(e: ComponentEvent) {
+                        host.sync(renderer, aspectRatioMode, onSurfaceAttached)
+                    }
+                })
+
+                host.addHierarchyListener { e ->
+                    val flags = e.changeFlags
+                    if ((flags and (HierarchyEvent.DISPLAYABILITY_CHANGED.toLong() or HierarchyEvent.SHOWING_CHANGED.toLong())) != 0L) {
+                        if (host.isDisplayable) {
+                            host.syncDebounced(renderer, aspectRatioMode, onSurfaceAttached)
+                        } else {
+                            host.onDetached(renderer, onSurfaceAttached)
+                        }
                     }
                 }
+
+                host
+            },
+            update = { host ->
+                host.sync(renderer, aspectRatioMode, onSurfaceAttached)
             }
         )
+    }
+}
+
+private class VideoSurfaceHost(
+    val canvas: Canvas
+) : JPanel(BorderLayout()) {
+
+    private var attachTimer: Timer? = null
+
+    init {
+        background = java.awt.Color.BLACK
+        isOpaque = true
+        layout = BorderLayout()
+        add(canvas, BorderLayout.CENTER)
+    }
+
+    override fun doLayout() {
+        super.doLayout()
+        canvas.setBounds(0, 0, width, height)
+    }
+
+    fun sync(
+        renderer: WindowsGlVideoRenderer,
+        aspectRatioMode: AspectRatioMode,
+        onSurfaceAttached: (Boolean) -> Unit
+    ) {
+        if (!canvas.isDisplayable) return
+
+        if (renderer.isAttachedTo(canvas)) {
+            // Already attached to this HWND: only update aspect ratio if changed
+            renderer.setAspectRatioMode(aspectRatioMode)
+        } else {
+            // HWND changed or initial attachment: debounce to let window state changes settle
+            syncDebounced(renderer, aspectRatioMode, onSurfaceAttached)
+        }
+    }
+
+    fun syncDebounced(
+        renderer: WindowsGlVideoRenderer,
+        aspectRatioMode: AspectRatioMode,
+        onSurfaceAttached: (Boolean) -> Unit
+    ) {
+        attachTimer?.stop()
+        attachTimer = Timer(40) {
+            attachTimer = null
+            doAttach(renderer, aspectRatioMode, onSurfaceAttached)
+        }.apply {
+            isRepeats = false
+            start()
+        }
+    }
+
+    fun onDetached(
+        renderer: WindowsGlVideoRenderer,
+        onSurfaceAttached: (Boolean) -> Unit
+    ) {
+        attachTimer?.stop()
+        attachTimer = null
+        if (renderer.isAttached) {
+            onSurfaceAttached(false)
+            renderer.detachSurface()
+        }
+    }
+
+    private fun doAttach(
+        renderer: WindowsGlVideoRenderer,
+        aspectRatioMode: AspectRatioMode,
+        onSurfaceAttached: (Boolean) -> Unit
+    ) {
+        if (!canvas.isDisplayable) return
+
+        try {
+            renderer.attachSurface(canvas)
+            renderer.setAspectRatioMode(aspectRatioMode)
+            onSurfaceAttached(true)
+        } catch (e: Exception) {
+            System.err.println("[VideoSurface] Error attaching native surface: ${e.message}")
+        }
     }
 }

@@ -62,14 +62,28 @@ class MpvInstance internal constructor(
             // Safe baseline options before initialization:
             // - config=no: do not load random mpv.conf from user's system
             // - terminal=no: do not attach to stdout console directly
-            // - vo=null: headless for Phase 0 (rendering will be hooked up in Phase 2)
+            // - vo=libmpv: headless render surface for the libmpv OpenGL render API
             // - idle=yes: keep player alive waiting for commands rather than exiting
+            // - hwdec=auto-copy: hardware video decode (D3D11VA/DXVA2 on Windows)
+            //   using "copy" variant so decoded frames are copied to CPU memory before
+            //   being passed to the OpenGL VO — safe with our WGL path; no D3D-GL
+            //   interop needed. MPV_RENDER_PARAM_ADVANCED_CONTROL=1 in the render
+            //   context enables this copy path on the renderer side.
+            // - hwdec-codecs=all: allow hardware decoding for all supported codecs.
             val baseOptions = mapOf(
                 "config" to "no",
                 "terminal" to "no",
                 "vo" to "libmpv",
-                "idle" to "yes"
+                "idle" to "yes",
+                "hwdec" to "auto-copy",
+                "hwdec-codecs" to "all",
+                "vd-lavc-threads" to "0",
+                "demuxer-max-bytes" to "150MiB",
+                "demuxer-readahead-secs" to "20",
+                "video-sync" to "audio",
+                "hr-seek" to "yes"
             ) + defaultOptions
+
 
 
             for ((key, value) in baseOptions) {

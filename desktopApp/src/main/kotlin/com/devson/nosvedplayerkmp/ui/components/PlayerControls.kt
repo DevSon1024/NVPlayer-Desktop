@@ -1,10 +1,5 @@
 package com.devson.nosvedplayerkmp.ui.components
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -59,23 +54,17 @@ fun PlayerControls(
     onVolumeChanged: (Float) -> Unit,
     onToggleMute: () -> Unit,
     onSpeedSelected: (Float) -> Unit,
-    onAspectRatioSelected: (com.devson.nosvedplayerkmp.player.mpv.render.AspectRatioMode) -> Unit,
+    onAspectRatioSelected: (com.devson.nosvedplayerkmp.player.mpv.render.AspectRatioMode) -> Unit = {},
     onToggleFullscreen: () -> Unit,
     onOpenFile: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    AnimatedVisibility(
-        visible = uiState.areControlsVisible,
-        enter = fadeIn() + slideInVertically { it / 2 },
-        exit = fadeOut() + slideOutVertically { it / 2 },
+    Box(
         modifier = modifier
+            .fillMaxWidth()
+            .background(PlayerTheme.ControlsGradient)
+            .padding(horizontal = 20.dp, vertical = 14.dp)
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(PlayerTheme.ControlsGradient)
-                .padding(horizontal = 20.dp, vertical = 14.dp)
-        ) {
             Column(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -205,12 +194,6 @@ fun PlayerControls(
                             onSpeedSelected = onSpeedSelected
                         )
 
-                        // Aspect Ratio Mode
-                        AspectRatioSelector(
-                            currentMode = uiState.aspectRatioMode,
-                            onModeSelected = onAspectRatioSelected
-                        )
-
                         // Fullscreen Toggle
                         IconButton(
                             onClick = onToggleFullscreen,
@@ -227,4 +210,3 @@ fun PlayerControls(
             }
         }
     }
-}

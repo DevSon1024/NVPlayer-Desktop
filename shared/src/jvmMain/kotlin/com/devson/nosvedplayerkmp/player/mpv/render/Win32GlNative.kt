@@ -45,9 +45,25 @@ open class Win32PixelFormatDescriptor : Structure() {
     @JvmField var dwDamageMask: Int = 0
 }
 
+/**
+ * Windows Win32 RECT structure for window and client dimensions.
+ */
+@Structure.FieldOrder("left", "top", "right", "bottom")
+open class Win32Rect : Structure() {
+    @JvmField var left: Int = 0
+    @JvmField var top: Int = 0
+    @JvmField var right: Int = 0
+    @JvmField var bottom: Int = 0
+
+    val width: Int get() = (right - left).coerceAtLeast(0)
+    val height: Int get() = (bottom - top).coerceAtLeast(0)
+}
+
 internal interface Win32User32 : Library {
     fun GetDC(hwnd: Pointer): Pointer?
     fun ReleaseDC(hwnd: Pointer, hdc: Pointer): Int
+    fun GetClientRect(hwnd: Pointer, rect: Win32Rect): Boolean
+    fun IsWindow(hwnd: Pointer): Boolean
 }
 
 internal interface Win32Gdi32 : Library {
@@ -62,6 +78,9 @@ internal interface Win32Opengl32 : Library {
     fun wglMakeCurrent(hdc: Pointer?, hglrc: Pointer?): Boolean
     fun wglDeleteContext(hglrc: Pointer): Boolean
     fun wglGetProcAddress(name: String): Pointer?
+    fun glViewport(x: Int, y: Int, width: Int, height: Int)
+    fun glClearColor(red: Float, green: Float, blue: Float, alpha: Float)
+    fun glClear(mask: Int)
 }
 
 internal interface Win32Kernel32 : Library {
@@ -71,6 +90,8 @@ internal interface Win32Kernel32 : Library {
 }
 
 internal object Win32GlInterop {
+    const val GL_COLOR_BUFFER_BIT = 0x00004000
+
     val user32: Win32User32 by lazy { Native.load("user32", Win32User32::class.java) }
     val gdi32: Win32Gdi32 by lazy { Native.load("gdi32", Win32Gdi32::class.java) }
     val opengl32: Win32Opengl32 by lazy { Native.load("opengl32", Win32Opengl32::class.java) }
@@ -92,4 +113,14 @@ internal object Win32GlInterop {
         }
         return proc
     }
+
+    /**
+     * Retrieves the physical client bounds of the given HWND in device pixels.
+     */
+    fun getWindowClientRect(hwnd: Pointer?): Win32Rect? {
+        if (hwnd == null || Pointer.nativeValue(hwnd) == 0L) return null
+        val rect = Win32Rect()
+        return if (user32.GetClientRect(hwnd, rect)) rect else null
+    }
 }
+
