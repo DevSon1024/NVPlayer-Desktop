@@ -143,7 +143,6 @@ fun main(args: Array<String>) {
             },
             state = windowState,
             title = windowTitle,
-            undecorated = isFullscreen,
             onKeyEvent = { keyEvent ->
                 if (isFullscreen && keyEvent.type == KeyEventType.KeyDown && keyEvent.key == Key.Escape) {
                     appViewModel.exitFullscreen()

@@ -104,8 +104,18 @@ fun VideoSurface(
 
                 val host = VideoSurfaceHost(canvas)
 
+                fun updatePhysicalDimensions() {
+                    val transform = canvas.graphicsConfiguration?.defaultTransform
+                    val scaleX = transform?.scaleX ?: 1.0
+                    val scaleY = transform?.scaleY ?: 1.0
+                    val physicalW = (canvas.width * scaleX).toInt().coerceAtLeast(1)
+                    val physicalH = (canvas.height * scaleY).toInt().coerceAtLeast(1)
+                    renderer.setSurfaceSize(physicalW, physicalH)
+                }
+
                 canvas.addComponentListener(object : ComponentAdapter() {
                     override fun componentResized(e: ComponentEvent) {
+                        updatePhysicalDimensions()
                         if (renderer.isAttachedTo(canvas)) {
                             renderer.triggerRedraw()
                         } else {
@@ -114,6 +124,7 @@ fun VideoSurface(
                     }
 
                     override fun componentShown(e: ComponentEvent) {
+                        updatePhysicalDimensions()
                         host.sync(renderer, aspectRatioMode, onSurfaceAttached)
                     }
                 })
@@ -122,6 +133,7 @@ fun VideoSurface(
                     val flags = e.changeFlags
                     if ((flags and (HierarchyEvent.DISPLAYABILITY_CHANGED.toLong() or HierarchyEvent.SHOWING_CHANGED.toLong())) != 0L) {
                         if (canvas.isDisplayable) {
+                            updatePhysicalDimensions()
                             host.syncDebounced(renderer, aspectRatioMode, onSurfaceAttached)
                         } else {
                             host.onDetached(renderer, onSurfaceAttached)
@@ -131,6 +143,7 @@ fun VideoSurface(
 
                 host.addComponentListener(object : ComponentAdapter() {
                     override fun componentResized(e: ComponentEvent) {
+                        updatePhysicalDimensions()
                         if (renderer.isAttachedTo(canvas)) {
                             renderer.triggerRedraw()
                         } else {
@@ -139,6 +152,7 @@ fun VideoSurface(
                     }
 
                     override fun componentShown(e: ComponentEvent) {
+                        updatePhysicalDimensions()
                         host.sync(renderer, aspectRatioMode, onSurfaceAttached)
                     }
                 })
@@ -147,6 +161,7 @@ fun VideoSurface(
                     val flags = e.changeFlags
                     if ((flags and (HierarchyEvent.DISPLAYABILITY_CHANGED.toLong() or HierarchyEvent.SHOWING_CHANGED.toLong())) != 0L) {
                         if (host.isDisplayable) {
+                            updatePhysicalDimensions()
                             host.syncDebounced(renderer, aspectRatioMode, onSurfaceAttached)
                         } else {
                             host.onDetached(renderer, onSurfaceAttached)
@@ -188,6 +203,7 @@ private class VideoSurfaceHost(
     ) {
         if (!canvas.isDisplayable) return
 
+        updatePhysicalDimensions(renderer)
         if (renderer.isAttachedTo(canvas)) {
             // Already attached to this HWND: only update aspect ratio if changed
             renderer.setAspectRatioMode(aspectRatioMode)
@@ -232,11 +248,21 @@ private class VideoSurfaceHost(
         if (!canvas.isDisplayable) return
 
         try {
+            updatePhysicalDimensions(renderer)
             renderer.attachSurface(canvas)
             renderer.setAspectRatioMode(aspectRatioMode)
             onSurfaceAttached(true)
         } catch (e: Exception) {
             System.err.println("[VideoSurface] Error attaching native surface: ${e.message}")
         }
+    }
+
+    private fun updatePhysicalDimensions(renderer: WindowsGlVideoRenderer) {
+        val transform = canvas.graphicsConfiguration?.defaultTransform
+        val scaleX = transform?.scaleX ?: 1.0
+        val scaleY = transform?.scaleY ?: 1.0
+        val physicalW = (canvas.width * scaleX).toInt().coerceAtLeast(1)
+        val physicalH = (canvas.height * scaleY).toInt().coerceAtLeast(1)
+        renderer.setSurfaceSize(physicalW, physicalH)
     }
 }

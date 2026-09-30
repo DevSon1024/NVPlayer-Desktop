@@ -113,11 +113,13 @@ class WindowsGlVideoRenderer(
                 println("[WindowsGlVideoRenderer] Attaching surface to HWND=$newHwnd")
             }
 
-            val clientRect = Win32GlInterop.getWindowClientRect(newHwnd)
-            val initialW = (clientRect?.width ?: if (surface.width > 0) surface.width else 640).coerceAtLeast(1)
-            val initialH = (clientRect?.height ?: if (surface.height > 0) surface.height else 480).coerceAtLeast(1)
-            surfaceWidth.set(initialW)
-            surfaceHeight.set(initialH)
+            val transform = surface.graphicsConfiguration?.defaultTransform
+            val scaleX = transform?.scaleX ?: 1.0
+            val scaleY = transform?.scaleY ?: 1.0
+            val initialW = if (surface.width > 0) (surface.width * scaleX).toInt() else 640
+            val initialH = if (surface.height > 0) (surface.height * scaleY).toInt() else 480
+            surfaceWidth.set(initialW.coerceAtLeast(1))
+            surfaceHeight.set(initialH.coerceAtLeast(1))
             attachedHwnd = newHwnd
 
             val initLatch = CountDownLatch(1)
@@ -331,35 +333,26 @@ class WindowsGlVideoRenderer(
                 }
                 if (disposed.get() || !attached.get()) break
 
-                // Continually sync with true Win32 physical client dimensions without object allocation
-                var w = surfaceWidth.get().coerceAtLeast(1)
-                var h = surfaceHeight.get().coerceAtLeast(1)
-                if (user32.GetClientRect(hwnd, clientRect)) {
-                    w = clientRect.width.coerceAtLeast(1)
-                    h = clientRect.height.coerceAtLeast(1)
-                    surfaceWidth.set(w)
-                    surfaceHeight.set(h)
-                }
+                // Physical, DPI-scaled dimensions passed from the surface container
+                val physicalWidth = surfaceWidth.get().coerceAtLeast(1)
+                val physicalHeight = surfaceHeight.get().coerceAtLeast(1)
 
                 val flags = loadedRender.mpv_render_context_update(ctx)
                 val wasForced = forceRedraw.compareAndSet(true, false)
                 val needsRender = (flags and MpvRenderUpdateFlag.FRAME) != 0L || wasForced
 
                 if (needsRender) {
-                    val sizeChanged = (w != lastViewportW || h != lastViewportH)
-                    if (sizeChanged) {
-                        opengl32.glViewport(0, 0, w, h)
-                        lastViewportW = w
-                        lastViewportH = h
-                    }
+                    // Update OpenGL viewport to current physical dimensions
+                    opengl32.glViewport(0, 0, physicalWidth, physicalHeight)
 
                     // Clear letterbox / pillarbox area to black before rendering video frame
                     opengl32.glClearColor(0.0f, 0.0f, 0.0f, 1.0f)
                     opengl32.glClear(Win32GlInterop.GL_COLOR_BUFFER_BIT)
 
+                    // Update mpv_opengl_fbo dimensions immediately before render
                     fboMem.setInt(0, 0) // Default window framebuffer
-                    fboMem.setInt(4, w)
-                    fboMem.setInt(8, h)
+                    fboMem.setInt(4, physicalWidth)
+                    fboMem.setInt(8, physicalHeight)
                     fboMem.setInt(12, 0)
 
                     val status = loadedRender.mpv_render_context_render(ctx, renderParamsMem)
