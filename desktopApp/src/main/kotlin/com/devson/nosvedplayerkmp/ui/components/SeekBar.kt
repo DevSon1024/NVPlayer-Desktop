@@ -1,6 +1,8 @@
 package com.devson.nosvedplayerkmp.ui.components
 
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -29,13 +31,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.time.Duration
 
 /**
- * Interactive scrub bar supporting drag-to-seek, click-to-seek, hover expansion,
- * and high-contrast time indicators.
+ * Modern Material 3 scrub bar supporting drag-to-seek, click-to-seek,
+ * dynamic hover track expansion, and prominent auto-hiding thumb.
  */
 @Composable
 fun SeekBar(
@@ -52,11 +55,17 @@ fun SeekBar(
     val interactionSource = remember { MutableInteractionSource() }
     val isHovered by interactionSource.collectIsHoveredAsState()
 
+    val isInteractive = isHovered || isScrubbing
+
     val trackHeight by animateDpAsState(
-        targetValue = if (isHovered || isScrubbing) 6.dp else 4.dp
+        targetValue = if (isInteractive) 6.dp else 3.5.dp,
+        animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing),
+        label = "seekBarTrackHeight"
     )
     val thumbRadius by animateDpAsState(
-        targetValue = if (isHovered || isScrubbing) 7.dp else 0.dp
+        targetValue = if (isInteractive) 8.dp else 0.dp,
+        animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing),
+        label = "seekBarThumbRadius"
     )
 
     var widthPx by remember { mutableStateOf(1f) }
@@ -69,7 +78,7 @@ fun SeekBar(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(24.dp)
+                .height(28.dp)
                 .hoverable(interactionSource)
                 .pointerInput(enabled) {
                     if (!enabled) return@pointerInput
@@ -103,7 +112,7 @@ fun SeekBar(
                 },
             contentAlignment = Alignment.Center
         ) {
-            Canvas(modifier = Modifier.fillMaxWidth().height(24.dp)) {
+            Canvas(modifier = Modifier.fillMaxWidth().height(28.dp)) {
                 widthPx = size.width
                 val centerY = size.height / 2f
                 val h = trackHeight.toPx()
@@ -111,7 +120,7 @@ fun SeekBar(
 
                 // Background track
                 drawRoundRect(
-                    color = if (enabled) PlayerTheme.SliderTrackInactive else Color(0xFF252530),
+                    color = if (enabled) PlayerTheme.SliderTrackInactive else Color(0xFF22222E),
                     topLeft = Offset(0f, centerY - h / 2f),
                     size = Size(size.width, h),
                     cornerRadius = CornerRadius(h / 2f, h / 2f)
@@ -121,26 +130,32 @@ fun SeekBar(
                 val filledWidth = (progress.coerceIn(0f, 1f) * size.width).coerceAtLeast(0f)
                 if (filledWidth > 0f) {
                     drawRoundRect(
-                        color = if (enabled) PlayerTheme.PrimaryAccent else Color(0xFF4A4A58),
+                        color = if (enabled) PlayerTheme.SliderTrackActive else Color(0xFF4A4A58),
                         topLeft = Offset(0f, centerY - h / 2f),
                         size = Size(filledWidth, h),
                         cornerRadius = CornerRadius(h / 2f, h / 2f)
                     )
                 }
 
-                // Thumb circle
-                if (enabled && radiusPx > 0f) {
+                // Prominent Material 3 Thumb (only visible on hover or drag)
+                if (enabled && radiusPx > 0.5f) {
                     val thumbX = filledWidth.coerceIn(radiusPx, size.width - radiusPx)
-                    // Glow / shadow
+                    // Halo / glow
                     drawCircle(
-                        color = PlayerTheme.PrimaryAccent.copy(alpha = 0.4f),
-                        radius = radiusPx + 3.dp.toPx(),
+                        color = PlayerTheme.PrimaryAccent.copy(alpha = 0.35f),
+                        radius = radiusPx + 4.dp.toPx(),
                         center = Offset(thumbX, centerY)
                     )
-                    // Solid center
+                    // Thumb ring
+                    drawCircle(
+                        color = PlayerTheme.PrimaryAccent,
+                        radius = radiusPx,
+                        center = Offset(thumbX, centerY)
+                    )
+                    // Solid center core
                     drawCircle(
                         color = PlayerTheme.SliderThumb,
-                        radius = radiusPx,
+                        radius = (radiusPx - 2.5.dp.toPx()).coerceAtLeast(1.5.dp.toPx()),
                         center = Offset(thumbX, centerY)
                     )
                 }
@@ -149,7 +164,7 @@ fun SeekBar(
 
         // Time labels: Position / Duration
         Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 2.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 2.dp, vertical = 2.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -157,13 +172,15 @@ fun SeekBar(
                 text = formatDuration(position),
                 color = if (enabled) PlayerTheme.TextPrimary else PlayerTheme.TextTertiary,
                 fontFamily = FontFamily.Monospace,
-                fontSize = 12.sp
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium
             )
             Text(
                 text = formatDuration(duration),
                 color = if (enabled) PlayerTheme.TextSecondary else PlayerTheme.TextTertiary,
                 fontFamily = FontFamily.Monospace,
-                fontSize = 12.sp
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium
             )
         }
     }

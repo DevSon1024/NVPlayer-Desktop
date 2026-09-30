@@ -85,13 +85,28 @@ fun VideoSurface(
                     }
                 })
 
+                var lastScreenX = -1
+                var lastScreenY = -1
+
                 canvas.addMouseMotionListener(object : MouseMotionAdapter() {
                     override fun mouseMoved(e: MouseEvent) {
-                        onMouseMove()
+                        val sx = e.xOnScreen
+                        val sy = e.yOnScreen
+                        if (sx != lastScreenX || sy != lastScreenY) {
+                            lastScreenX = sx
+                            lastScreenY = sy
+                            onMouseMove()
+                        }
                     }
 
                     override fun mouseDragged(e: MouseEvent) {
-                        onMouseMove()
+                        val sx = e.xOnScreen
+                        val sy = e.yOnScreen
+                        if (sx != lastScreenX || sy != lastScreenY) {
+                            lastScreenX = sx
+                            lastScreenY = sy
+                            onMouseMove()
+                        }
                     }
                 })
 

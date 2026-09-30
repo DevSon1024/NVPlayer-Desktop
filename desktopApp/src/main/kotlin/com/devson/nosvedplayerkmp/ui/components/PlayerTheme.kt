@@ -30,8 +30,9 @@ object PlayerTheme {
 
     val ControlsGradient = Brush.verticalGradient(
         0.0f to Color.Transparent,
-        0.4f to Color(0x99000000),
-        1.0f to Color(0xF00A0A0E)
+        0.25f to Color(0x66000000),
+        0.65f to Color(0xCC000000),
+        1.0f to Color(0xF508080C)
     )
 
     val TopBarGradient = Brush.verticalGradient(

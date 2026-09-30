@@ -1,15 +1,12 @@
 package com.devson.nosvedplayerkmp.ui.components
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.VolumeDown
@@ -18,6 +15,7 @@ import androidx.compose.material.icons.automirrored.rounded.VolumeOff
 import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
@@ -26,13 +24,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 /**
- * Compact volume control with mute toggle, collapsible/expandable slider, and percentage indicator.
+ * Modern Material 3 volume control with mute toggle, responsive slider, and percentage indicator.
  */
 @Composable
 fun VolumeControl(
@@ -55,51 +53,51 @@ fun VolumeControl(
     Row(
         modifier = modifier
             .hoverable(interactionSource)
-            .padding(horizontal = 4.dp),
+            .padding(horizontal = 2.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        // Standard Material 3 48dp touch target with built-in ripple effect
         IconButton(
             onClick = onToggleMute,
-            modifier = Modifier.width(36.dp)
+            modifier = Modifier.size(48.dp),
+            colors = IconButtonDefaults.iconButtonColors(
+                contentColor = if (isMuted) PlayerTheme.ErrorRed else PlayerTheme.TextPrimary
+            )
         ) {
             Icon(
                 imageVector = volumeIcon,
                 contentDescription = if (isMuted) "Unmute" else "Mute",
-                tint = if (isMuted) PlayerTheme.ErrorRed else PlayerTheme.TextPrimary
+                tint = if (isMuted) PlayerTheme.ErrorRed else PlayerTheme.TextPrimary,
+                modifier = Modifier.size(24.dp)
             )
         }
 
-        // Show volume slider and percentage
-        AnimatedVisibility(
-            visible = isHovered || true, // Keep accessible while compact
-            enter = fadeIn(animationSpec = tween(150)),
-            exit = fadeOut(animationSpec = tween(150))
+        // Volume slider and percentage indicator
+        Row(
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Slider(
-                    value = if (isMuted) 0f else volume,
-                    onValueChange = { onVolumeChanged(it) },
-                    valueRange = 0f..100f,
-                    modifier = Modifier.width(80.dp),
-                    colors = SliderDefaults.colors(
-                        thumbColor = PlayerTheme.SliderThumb,
-                        activeTrackColor = PlayerTheme.PrimaryAccent,
-                        inactiveTrackColor = PlayerTheme.SliderTrackInactive
-                    )
+            Slider(
+                value = if (isMuted) 0f else volume,
+                onValueChange = { onVolumeChanged(it) },
+                valueRange = 0f..100f,
+                modifier = Modifier.width(88.dp),
+                colors = SliderDefaults.colors(
+                    thumbColor = PlayerTheme.SliderThumb,
+                    activeTrackColor = PlayerTheme.PrimaryAccent,
+                    inactiveTrackColor = PlayerTheme.SliderTrackInactive
                 )
+            )
 
-                Spacer(modifier = Modifier.width(6.dp))
+            Spacer(modifier = Modifier.width(6.dp))
 
-                Text(
-                    text = "${if (isMuted) 0 else volume.toInt()}%",
-                    color = PlayerTheme.TextSecondary,
-                    fontSize = 11.sp,
-                    fontFamily = FontFamily.Monospace,
-                    modifier = Modifier.width(34.dp)
-                )
-            }
+            Text(
+                text = "${if (isMuted) 0 else volume.toInt()}%",
+                color = PlayerTheme.TextSecondary,
+                fontSize = 12.sp,
+                fontFamily = FontFamily.Monospace,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.width(36.dp)
+            )
         }
     }
 }

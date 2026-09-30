@@ -156,7 +156,7 @@ fun PlayerScreen(
         focusRequester.requestFocus()
     }
 
-    Box(
+    Column(
         modifier = modifier
             .fillMaxSize()
             .background(Color.Black)
@@ -184,162 +184,160 @@ fun PlayerScreen(
                 }
             }
     ) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            // 1. Top Title Bar (Docked above video viewport; auto-hides during playback)
-            AnimatedVisibility(
-                visible = isUiVisible && uiState.isMediaLoaded,
-                enter = fadeIn(animationSpec = tween(300)) + slideInVertically(animationSpec = tween(300)) { -it },
-                exit = fadeOut(animationSpec = tween(300)) + slideOutVertically(animationSpec = tween(300)) { -it }
+        // 1. Top Title Bar (Auto-hides during active playback)
+        AnimatedVisibility(
+            visible = isUiVisible && uiState.isMediaLoaded,
+            enter = fadeIn(animationSpec = tween(250)) + slideInVertically(animationSpec = tween(250)) { -it },
+            exit = fadeOut(animationSpec = tween(250)) + slideOutVertically(animationSpec = tween(250)) { -it }
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(PlayerTheme.TopBarGradient)
+                    .padding(horizontal = 24.dp, vertical = 14.dp)
             ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(PlayerTheme.TopBarGradient)
-                        .padding(horizontal = 24.dp, vertical = 14.dp)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        modifier = Modifier.weight(1f, fill = false)
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.weight(1f, fill = false)
-                        ) {
-                            if (onBack != null) {
-                                IconButton(
-                                    onClick = onBack,
-                                    colors = IconButtonDefaults.iconButtonColors(contentColor = PlayerTheme.TextPrimary)
-                                ) {
-                                    Icon(
-                                        Icons.AutoMirrored.Rounded.ArrowBack,
-                                        contentDescription = "Return to library"
-                                    )
-                                }
-                                Spacer(modifier = Modifier.width(8.dp))
-                            }
-                            Text(
-                                text = "Nosved Player",
-                                color = PlayerTheme.PrimaryAccent,
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                            if (!uiState.mediaTitle.isNullOrBlank()) {
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Text(
-                                    text = "•",
-                                    color = PlayerTheme.TextTertiary,
-                                    fontSize = 12.sp
-                                )
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Text(
-                                    text = uiState.mediaTitle ?: "",
-                                    color = PlayerTheme.TextPrimary,
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Medium
-                                )
-                            }
-                        }
-
-                        // Dedicated UI button to exit fullscreen
-                        if (uiState.isFullscreen) {
+                        if (onBack != null) {
                             IconButton(
-                                onClick = { onToggleFullscreen?.invoke() ?: viewModel.exitFullscreen() },
+                                onClick = onBack,
                                 colors = IconButtonDefaults.iconButtonColors(contentColor = PlayerTheme.TextPrimary)
                             ) {
                                 Icon(
-                                    imageVector = Icons.Rounded.FullscreenExit,
-                                    contentDescription = "Exit fullscreen"
+                                    Icons.AutoMirrored.Rounded.ArrowBack,
+                                    contentDescription = "Return to library"
                                 )
                             }
+                            Spacer(modifier = Modifier.width(8.dp))
+                        }
+                        Text(
+                            text = "Nosved Player",
+                            color = PlayerTheme.PrimaryAccent,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        if (!uiState.mediaTitle.isNullOrBlank()) {
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text(
+                                text = "•",
+                                color = PlayerTheme.TextTertiary,
+                                fontSize = 12.sp
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text(
+                                text = uiState.mediaTitle ?: "",
+                                color = PlayerTheme.TextPrimary,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
+
+                    // Dedicated UI button to exit fullscreen
+                    if (uiState.isFullscreen) {
+                        IconButton(
+                            onClick = { onToggleFullscreen?.invoke() ?: viewModel.exitFullscreen() },
+                            colors = IconButtonDefaults.iconButtonColors(contentColor = PlayerTheme.TextPrimary)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.FullscreenExit,
+                                contentDescription = "Exit fullscreen"
+                            )
                         }
                     }
                 }
             }
+        }
 
-            // Error Banner docked above video viewport so it is never occluded by native HWND
-            if (uiState.errorMessage != null) {
-                ErrorOverlay(
-                    errorMessage = uiState.errorMessage,
-                    errorDetails = uiState.errorDetails,
-                    onDismiss = { viewModel.dismissError() },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 24.dp, vertical = 8.dp)
-                )
-            }
-
-            // 2. Video Viewport & Overlays (Expands to full height when controls auto-hide)
-            Box(
+        // Error Banner
+        if (uiState.errorMessage != null) {
+            ErrorOverlay(
+                errorMessage = uiState.errorMessage ?: "",
+                errorDetails = uiState.errorDetails,
+                onDismiss = { viewModel.dismissError() },
                 modifier = Modifier
-                    .weight(1f)
                     .fillMaxWidth()
-                    .background(Color.Black)
-            ) {
-                if (uiState.isMediaLoaded) {
-                    VideoSurfaceContainer(
-                        player = viewModel.player,
-                        aspectRatioMode = uiState.aspectRatioMode,
-                        onSurfaceAttached = { attached -> viewModel.setSurfaceAttached(attached) },
-                        onSingleClick = {
-                            resetHideTimer()
-                            viewModel.togglePlayPause()
-                        },
-                        onDoubleClick = {
-                            resetHideTimer()
-                            onToggleFullscreen?.invoke() ?: viewModel.toggleFullscreen()
-                        },
-                        onMouseMove = {
-                            resetHideTimer()
-                            viewModel.onUserActivity()
-                        },
-                        onMouseWheel = { delta ->
-                            resetHideTimer()
-                            viewModel.adjustVolume(delta)
-                        },
-                        modifier = Modifier.fillMaxSize()
-                    )
-                } else {
-                    EmptyState(
-                        onOpenFile = { launchFileDialog() },
-                        modifier = Modifier.fillMaxSize()
-                    )
-                }
+                    .padding(horizontal = 24.dp, vertical = 8.dp)
+            )
+        }
 
-                // Loading Overlay (Buffering / initializing)
-                if (uiState.isLoading && !uiState.isMediaLoaded) {
-                    LoadingOverlay(
-                        isLoading = true,
-                        modifier = Modifier.align(Alignment.Center)
-                    )
-                }
-            }
-
-            // 3. Bottom Playback Controls (Docked below video viewport; smoothly slides in and out)
-            AnimatedVisibility(
-                visible = isUiVisible && uiState.isMediaLoaded,
-                enter = fadeIn(animationSpec = tween(300)) + slideInVertically(animationSpec = tween(300)) { it },
-                exit = fadeOut(animationSpec = tween(300)) + slideOutVertically(animationSpec = tween(300)) { it }
-            ) {
-                PlayerControls(
-                    uiState = uiState,
-                    onPlay = { resetHideTimer(); viewModel.play() },
-                    onPause = { resetHideTimer(); viewModel.pause() },
-                    onTogglePlayPause = { resetHideTimer(); viewModel.togglePlayPause() },
-                    onStop = { resetHideTimer(); viewModel.stop() },
-                    onSeekRelative = { resetHideTimer(); viewModel.seekRelative(it) },
-                    onScrubStart = { resetHideTimer(); viewModel.onScrubStart(it) },
-                    onScrubMove = { resetHideTimer(); viewModel.onScrubMove(it) },
-                    onScrubEnd = { resetHideTimer(); viewModel.onScrubEnd(it) },
-                    onVolumeChanged = { resetHideTimer(); viewModel.setVolume(it) },
-                    onToggleMute = { resetHideTimer(); viewModel.toggleMute() },
-                    onSpeedSelected = { resetHideTimer(); viewModel.setSpeed(it) },
-                    onAspectRatioSelected = { resetHideTimer(); viewModel.setAspectRatio(it) },
-                    onToggleFullscreen = { resetHideTimer(); onToggleFullscreen?.invoke() ?: viewModel.toggleFullscreen() },
+        // 2. Video Surface Viewport (Expands to 100% full screen when controls auto-hide)
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .background(Color.Black)
+        ) {
+            if (uiState.isMediaLoaded) {
+                VideoSurfaceContainer(
+                    player = viewModel.player,
+                    aspectRatioMode = uiState.aspectRatioMode,
+                    onSurfaceAttached = { attached -> viewModel.setSurfaceAttached(attached) },
+                    onSingleClick = {
+                        resetHideTimer()
+                        viewModel.togglePlayPause()
+                    },
+                    onDoubleClick = {
+                        resetHideTimer()
+                        onToggleFullscreen?.invoke() ?: viewModel.toggleFullscreen()
+                    },
+                    onMouseMove = {
+                        resetHideTimer()
+                        viewModel.onUserActivity()
+                    },
+                    onMouseWheel = { delta ->
+                        resetHideTimer()
+                        viewModel.adjustVolume(delta)
+                    },
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                EmptyState(
                     onOpenFile = { launchFileDialog() },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxSize()
                 )
             }
+
+            // Loading Overlay (Buffering / initializing)
+            if (uiState.isLoading && !uiState.isMediaLoaded) {
+                LoadingOverlay(
+                    isLoading = true,
+                    modifier = Modifier.align(Alignment.Center)
+                )
+            }
+        }
+
+        // 3. Bottom Playback Controls (Auto-hides smoothly during playback)
+        AnimatedVisibility(
+            visible = isUiVisible && uiState.isMediaLoaded,
+            enter = fadeIn(animationSpec = tween(250)) + slideInVertically(animationSpec = tween(250)) { it },
+            exit = fadeOut(animationSpec = tween(250)) + slideOutVertically(animationSpec = tween(250)) { it }
+        ) {
+            PlayerControls(
+                uiState = uiState,
+                onPlay = { resetHideTimer(); viewModel.play() },
+                onPause = { resetHideTimer(); viewModel.pause() },
+                onTogglePlayPause = { resetHideTimer(); viewModel.togglePlayPause() },
+                onStop = { resetHideTimer(); viewModel.stop() },
+                onSeekRelative = { resetHideTimer(); viewModel.seekRelative(it) },
+                onScrubStart = { resetHideTimer(); viewModel.onScrubStart(it) },
+                onScrubMove = { resetHideTimer(); viewModel.onScrubMove(it) },
+                onScrubEnd = { resetHideTimer(); viewModel.onScrubEnd(it) },
+                onVolumeChanged = { resetHideTimer(); viewModel.setVolume(it) },
+                onToggleMute = { resetHideTimer(); viewModel.toggleMute() },
+                onSpeedSelected = { resetHideTimer(); viewModel.setSpeed(it) },
+                onAspectRatioSelected = { resetHideTimer(); viewModel.setAspectRatio(it) },
+                onToggleFullscreen = { resetHideTimer(); onToggleFullscreen?.invoke() ?: viewModel.toggleFullscreen() },
+                onOpenFile = { launchFileDialog() },
+                modifier = Modifier.fillMaxWidth()
+            )
         }
     }
 }
