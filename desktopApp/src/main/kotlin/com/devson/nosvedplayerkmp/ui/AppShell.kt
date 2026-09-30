@@ -81,11 +81,12 @@ fun AppShell(
                     viewModel = appViewModel.playerViewModel,
                     onBack = {
                         if (playerUiState.isFullscreen) {
-                            appViewModel.playerViewModel.exitFullscreen()
+                            appViewModel.exitFullscreen()
                         } else {
                             appViewModel.navigateTo(Screen.Home)
                         }
-                    }
+                    },
+                    onToggleFullscreen = { appViewModel.toggleFullscreen() }
                 )
             } else {
                 // Desktop Application Shell Layout
@@ -154,7 +155,8 @@ fun AppShell(
                                     )
                                     Screen.Player -> PlayerScreen(
                                         viewModel = appViewModel.playerViewModel,
-                                        onBack = { appViewModel.navigateTo(Screen.Home) }
+                                        onBack = { appViewModel.navigateTo(Screen.Home) },
+                                        onToggleFullscreen = { appViewModel.toggleFullscreen() }
                                     )
                                 }
                             }

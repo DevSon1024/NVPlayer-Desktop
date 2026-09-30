@@ -5,6 +5,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.FullscreenExit
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -29,7 +31,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -54,6 +60,7 @@ import java.awt.Frame
 fun PlayerScreen(
     viewModel: PlayerViewModel,
     onBack: (() -> Unit)? = null,
+    onToggleFullscreen: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -84,6 +91,10 @@ fun PlayerScreen(
             .focusRequester(focusRequester)
             .focusable()
             .onPreviewKeyEvent { event ->
+                if (event.type == KeyEventType.KeyDown && event.key == Key.Escape && uiState.isFullscreen) {
+                    viewModel.exitFullscreen()
+                    return@onPreviewKeyEvent true
+                }
                 val action = shortcutHandler.handleKeyEvent(event)
                 if (action != null) {
                     if (action == com.devson.nosvedplayerkmp.ui.input.PlayerAction.OpenFile) {
@@ -109,39 +120,61 @@ fun PlayerScreen(
                     .background(PlayerTheme.TopBarGradient)
                     .padding(horizontal = 24.dp, vertical = 14.dp)
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (onBack != null) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(1f, fill = false)
+                    ) {
+                        if (onBack != null) {
+                            IconButton(
+                                onClick = onBack,
+                                colors = IconButtonDefaults.iconButtonColors(contentColor = PlayerTheme.TextPrimary)
+                            ) {
+                                Icon(
+                                    Icons.AutoMirrored.Rounded.ArrowBack,
+                                    contentDescription = "Return to library"
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                        }
+                        Text(
+                            text = "Nosved Player",
+                            color = PlayerTheme.PrimaryAccent,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        if (!uiState.mediaTitle.isNullOrBlank()) {
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text(
+                                text = "•",
+                                color = PlayerTheme.TextTertiary,
+                                fontSize = 12.sp
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text(
+                                text = uiState.mediaTitle ?: "",
+                                color = PlayerTheme.TextPrimary,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
+
+                    // Dedicated UI button to exit fullscreen
+                    if (uiState.isFullscreen) {
                         IconButton(
-                            onClick = onBack,
+                            onClick = { onToggleFullscreen?.invoke() ?: viewModel.exitFullscreen() },
                             colors = IconButtonDefaults.iconButtonColors(contentColor = PlayerTheme.TextPrimary)
                         ) {
                             Icon(
-                                Icons.AutoMirrored.Rounded.ArrowBack,
-                                contentDescription = "Return to library"
+                                imageVector = Icons.Rounded.FullscreenExit,
+                                contentDescription = "Exit fullscreen"
                             )
                         }
-                        Spacer(modifier = Modifier.width(8.dp))
-                    }
-                    Text(
-                        text = "Nosved Player",
-                        color = PlayerTheme.PrimaryAccent,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    if (!uiState.mediaTitle.isNullOrBlank()) {
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Text(
-                            text = "•",
-                            color = PlayerTheme.TextTertiary,
-                            fontSize = 12.sp
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Text(
-                            text = uiState.mediaTitle ?: "",
-                            color = PlayerTheme.TextPrimary,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Medium
-                        )
                     }
                 }
             }
@@ -172,7 +205,7 @@ fun PlayerScreen(
                     aspectRatioMode = uiState.aspectRatioMode,
                     onSurfaceAttached = { attached -> viewModel.setSurfaceAttached(attached) },
                     onSingleClick = { viewModel.togglePlayPause() },
-                    onDoubleClick = { viewModel.toggleFullscreen() },
+                    onDoubleClick = { onToggleFullscreen?.invoke() ?: viewModel.toggleFullscreen() },
                     onMouseMove = { viewModel.onUserActivity() },
                     onMouseWheel = { delta -> viewModel.adjustVolume(delta) },
                     modifier = Modifier.fillMaxSize()
@@ -213,7 +246,7 @@ fun PlayerScreen(
                 onToggleMute = { viewModel.toggleMute() },
                 onSpeedSelected = { viewModel.setSpeed(it) },
                 onAspectRatioSelected = { viewModel.setAspectRatio(it) },
-                onToggleFullscreen = { viewModel.toggleFullscreen() },
+                onToggleFullscreen = { onToggleFullscreen?.invoke() ?: viewModel.toggleFullscreen() },
                 onOpenFile = { launchFileDialog() },
                 modifier = Modifier.fillMaxWidth()
             )

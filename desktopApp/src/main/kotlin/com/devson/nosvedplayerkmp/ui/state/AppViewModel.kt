@@ -100,6 +100,11 @@ class AppViewModel(
         .map { list -> list.filter { it.isContinueWatching } }
         .stateIn(scope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    // Fullscreen State
+    val isFullscreen: StateFlow<Boolean> = playerViewModel.uiState
+        .map { it.isFullscreen }
+        .stateIn(scope, SharingStarted.Eagerly, playerViewModel.uiState.value.isFullscreen)
+
     // Queue State
     val queue: StateFlow<List<QueueItem>> = queueManager.queue
     val currentQueueIndex: StateFlow<Int> = queueManager.currentIndex
@@ -300,6 +305,25 @@ class AppViewModel(
         scope.launch {
             player.stop()
             activeMediaFile = null
+        }
+    }
+
+    // Fullscreen Operations
+    fun toggleFullscreen() {
+        playerViewModel.toggleFullscreen()
+    }
+
+    fun exitFullscreen() {
+        playerViewModel.exitFullscreen()
+    }
+
+    fun setFullscreen(fullscreen: Boolean) {
+        if (fullscreen != isFullscreen.value) {
+            if (fullscreen) {
+                playerViewModel.toggleFullscreen()
+            } else {
+                playerViewModel.exitFullscreen()
+            }
         }
     }
 

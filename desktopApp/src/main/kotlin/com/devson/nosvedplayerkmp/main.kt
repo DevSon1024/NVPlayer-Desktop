@@ -7,6 +7,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
@@ -99,25 +103,30 @@ fun main(args: Array<String>) {
 
         val playerUiState by playerViewModel.uiState.collectAsState()
         val themeMode by appViewModel.themeMode.collectAsState()
+        val isFullscreen by appViewModel.isFullscreen.collectAsState()
 
         var previousPlacement by remember { mutableStateOf(WindowPlacement.Floating) }
 
         // Sync Fullscreen state with Window placement safely
-        LaunchedEffect(playerUiState.isFullscreen) {
-            if (playerUiState.isFullscreen) {
+        LaunchedEffect(isFullscreen) {
+            if (isFullscreen) {
                 if (windowState.placement != WindowPlacement.Fullscreen) {
                     previousPlacement = windowState.placement
                     windowState.placement = WindowPlacement.Fullscreen
                 }
             } else {
                 if (windowState.placement == WindowPlacement.Fullscreen) {
-                    windowState.placement = previousPlacement
+                    windowState.placement = if (previousPlacement == WindowPlacement.Fullscreen) {
+                        WindowPlacement.Floating
+                    } else {
+                        previousPlacement
+                    }
                 }
             }
         }
 
         val windowTitle = if (!playerUiState.mediaTitle.isNullOrBlank()) {
-            "${playerUiState.mediaTitle} — Nosved Player"
+            "${playerUiState.mediaTitle} - Nosved Player"
         } else {
             "Nosved Player"
         }
@@ -133,7 +142,16 @@ fun main(args: Array<String>) {
                 exitApplication()
             },
             state = windowState,
-            title = windowTitle
+            title = windowTitle,
+            undecorated = isFullscreen,
+            onKeyEvent = { keyEvent ->
+                if (isFullscreen && keyEvent.type == KeyEventType.KeyDown && keyEvent.key == Key.Escape) {
+                    appViewModel.exitFullscreen()
+                    true
+                } else {
+                    false
+                }
+            }
         ) {
             // Attach Drag & Drop listener to the AWT window
             LaunchedEffect(window) {
