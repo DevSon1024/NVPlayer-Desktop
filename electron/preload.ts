@@ -4,6 +4,18 @@ import { contextBridge, ipcRenderer } from 'electron';
  * Public, minimal API exposed to the renderer via contextBridge.
  * Raw IPC and Node.js primitives are strictly withheld.
  */
+export interface PlaybackStatusPayload {
+  mediaState: string;
+  currentFile: string | null;
+  position: number | null;
+  duration: number | null;
+  paused: boolean;
+  volume: number;
+  videoWidth?: number | null;
+  videoHeight?: number | null;
+  error?: string;
+}
+
 export interface NosvedAPI {
   getAppInfo: () => Promise<{
     name: string;
@@ -66,88 +78,17 @@ export interface NosvedAPI {
   openFileDialog: () => Promise<{
     canceled: boolean;
     filePath?: string;
-    status: {
-      mediaState: string;
-      currentFile: string | null;
-      position: number | null;
-      duration: number | null;
-      paused: boolean;
-      volume: number;
-      error?: string;
-    };
+    status: PlaybackStatusPayload;
   }>;
-  loadFile: (filePath: string) => Promise<{
-    mediaState: string;
-    currentFile: string | null;
-    position: number | null;
-    duration: number | null;
-    paused: boolean;
-    volume: number;
-    error?: string;
-  }>;
-  play: () => Promise<{
-    mediaState: string;
-    currentFile: string | null;
-    position: number | null;
-    duration: number | null;
-    paused: boolean;
-    volume: number;
-    error?: string;
-  }>;
-  pause: () => Promise<{
-    mediaState: string;
-    currentFile: string | null;
-    position: number | null;
-    duration: number | null;
-    paused: boolean;
-    volume: number;
-    error?: string;
-  }>;
-  togglePause: () => Promise<{
-    mediaState: string;
-    currentFile: string | null;
-    position: number | null;
-    duration: number | null;
-    paused: boolean;
-    volume: number;
-    error?: string;
-  }>;
-  seek: (positionSeconds: number) => Promise<{
-    mediaState: string;
-    currentFile: string | null;
-    position: number | null;
-    duration: number | null;
-    paused: boolean;
-    volume: number;
-    error?: string;
-  }>;
-  setVolume: (volumePercent: number) => Promise<{
-    mediaState: string;
-    currentFile: string | null;
-    position: number | null;
-    duration: number | null;
-    paused: boolean;
-    volume: number;
-    error?: string;
-  }>;
-  getPlaybackStatus: () => Promise<{
-    mediaState: string;
-    currentFile: string | null;
-    position: number | null;
-    duration: number | null;
-    paused: boolean;
-    volume: number;
-    error?: string;
-  }>;
-  onPlaybackStatus: (callback: (status: {
-    mediaState: string;
-    currentFile: string | null;
-    position: number | null;
-    duration: number | null;
-    paused: boolean;
-    volume: number;
-    error?: string;
-  }) => void) => void;
+  loadFile: (filePath: string) => Promise<PlaybackStatusPayload>;
+  play: () => Promise<PlaybackStatusPayload>;
+  pause: () => Promise<PlaybackStatusPayload>;
+  togglePause: () => Promise<PlaybackStatusPayload>;
+  seek: (positionSeconds: number) => Promise<PlaybackStatusPayload>;
+  setVolume: (volumePercent: number) => Promise<PlaybackStatusPayload>;
+  setVideoBounds: (bounds: { x: number; y: number; width: number; height: number; visible?: boolean }) => Promise<{ success: boolean }>;
+  getPlaybackStatus: () => Promise<PlaybackStatusPayload>;
+  onPlaybackStatus: (callback: (status: PlaybackStatusPayload) => void) => void;
 }
 
 const api: NosvedAPI = {
@@ -165,6 +106,7 @@ const api: NosvedAPI = {
   togglePause: () => ipcRenderer.invoke('player:toggle-pause'),
   seek: (positionSeconds: number) => ipcRenderer.invoke('player:seek', positionSeconds),
   setVolume: (volumePercent: number) => ipcRenderer.invoke('player:set-volume', volumePercent),
+  setVideoBounds: (bounds) => ipcRenderer.invoke('player:set-video-bounds', bounds),
   getPlaybackStatus: () => ipcRenderer.invoke('player:get-playback-status'),
   onPlaybackStatus: (callback) => {
     ipcRenderer.on('player:playback-status-update', (_event: Electron.IpcRendererEvent, status: unknown) => {

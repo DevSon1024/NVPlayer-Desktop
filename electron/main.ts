@@ -1,10 +1,12 @@
-import { app, BrowserWindow, dialog, ipcMain, session } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, screen, session } from 'electron';
 import path from 'node:path';
 import { runMpvProofOfConcept } from './native/mpv-bindings';
 import { NativePlayerService, SUPPORTED_VIDEO_EXTENSIONS } from './native/player-service';
+import { NativeVideoWindow } from './native/video-window';
 
 // Single active player lifecycle service for the main process
 const playerService = new NativePlayerService();
+const videoWindow = new NativeVideoWindow();
 
 // Broadcast playback changes to renderer
 playerService.onPlaybackStatusChange((status) => {
@@ -66,6 +68,25 @@ function createWindow(): void {
       allowRunningInsecureContent: false,
       preload: path.join(__dirname, 'preload.js'),
     },
+  });
+
+  try {
+    const nativeHwnd = mainWindow.getNativeWindowHandle().readBigInt64LE();
+    const childHwnd = videoWindow.create(nativeHwnd);
+    if (childHwnd) {
+      playerService.setVideoWindowHwnd(childHwnd);
+    }
+  } catch (err) {
+    console.error('[Main] Error attaching native video window to mainWindow:', err);
+  }
+
+  mainWindow.on('minimize', () => {
+    videoWindow.setVisible(false);
+  });
+
+  mainWindow.on('restore', () => {
+    const status = playerService.getPlaybackStatus();
+    videoWindow.setVisible(Boolean(status.currentFile && status.mediaState !== 'idle'));
   });
 
   // Gracefully show window only once it has rendered initial frame
@@ -157,6 +178,18 @@ function createWindow(): void {
                   playbackStatusResult = { error: String(e) };
                 }
 
+                let setVideoBoundsResult = null;
+                try {
+                  if (typeof window.nosvedAPI?.setVideoBounds === 'function') {
+                    console.log('[Test Mode Script] Calling setVideoBounds...');
+                    setVideoBoundsResult = await window.nosvedAPI.setVideoBounds({ x: 20, y: 80, width: 640, height: 360, visible: false });
+                    console.log('[Test Mode Script] setVideoBounds finished:', JSON.stringify(setVideoBoundsResult));
+                  }
+                } catch (e) {
+                  console.log('[Test Mode Script] setVideoBounds threw:', String(e));
+                  setVideoBoundsResult = { error: String(e) };
+                }
+
                 resolve({
                   hasNosvedAPI: typeof window.nosvedAPI !== 'undefined',
                   hasProcess: typeof window.process !== 'undefined',
@@ -168,6 +201,7 @@ function createWindow(): void {
                   nativeMpvResult,
                   playerStatusResult,
                   playbackStatusResult,
+                  setVideoBoundsResult,
                 });
               } else if (attempts < 80) {
                 setTimeout(check, 50);
@@ -197,6 +231,7 @@ function createWindow(): void {
   }
 
   mainWindow.on('closed', () => {
+    videoWindow.destroy();
     mainWindow = null;
   });
 }
@@ -371,6 +406,39 @@ function registerIpcHandlers(): void {
     }
     return playerService.getPlaybackStatus();
   });
+
+  ipcMain.handle('player:set-video-bounds', async (event, rawBounds: unknown) => {
+    if (!validateIpcSender(event)) {
+      throw new Error('Unauthorized IPC invocation: Sender validation failed');
+    }
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      return { success: false };
+    }
+    if (typeof rawBounds !== 'object' || rawBounds === null) {
+      throw new Error('Invalid bounds argument: Must be an object');
+    }
+    const b = rawBounds as { x?: unknown; y?: unknown; width?: unknown; height?: unknown; visible?: unknown };
+    if (
+      typeof b.x !== 'number' || !Number.isFinite(b.x) ||
+      typeof b.y !== 'number' || !Number.isFinite(b.y) ||
+      typeof b.width !== 'number' || !Number.isFinite(b.width) ||
+      typeof b.height !== 'number' || !Number.isFinite(b.height)
+    ) {
+      throw new Error('Invalid bounds dimensions: Values must be finite numbers');
+    }
+
+    const display = screen.getDisplayMatching(mainWindow.getBounds());
+    const scale = (display?.scaleFactor || 1) * (mainWindow.webContents.getZoomFactor() || 1);
+    const physX = Math.round(b.x * scale);
+    const physY = Math.round(b.y * scale);
+    const physW = Math.max(0, Math.round(b.width * scale));
+    const physH = Math.max(0, Math.round(b.height * scale));
+    const visible = Boolean(b.visible);
+
+    videoWindow.setBounds(physX, physY, physW, physH);
+    videoWindow.setVisible(visible);
+    return { success: true };
+  });
 }
 
 // App lifecycle
@@ -401,6 +469,7 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', async () => {
   try {
+    videoWindow.destroy();
     await playerService.shutdown();
   } catch (err) {
     console.error('[App] Error during player service shutdown on window close:', err);
@@ -413,6 +482,7 @@ app.on('window-all-closed', async () => {
 
 app.on('before-quit', async () => {
   try {
+    videoWindow.destroy();
     await playerService.shutdown();
   } catch (err) {
     console.error('[App] Error during player service shutdown before quit:', err);

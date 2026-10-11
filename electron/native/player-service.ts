@@ -42,6 +42,8 @@ export interface PlaybackStatus {
   duration: number | null;
   paused: boolean;
   volume: number;
+  videoWidth?: number | null;
+  videoHeight?: number | null;
   error?: string;
 }
 
@@ -68,6 +70,7 @@ export class NativePlayerService {
   private state: PlayerLifecycleState = 'uninitialized';
   private apiVersion?: PlayerServiceStatus['apiVersion'];
   private lastError?: string;
+  private videoWindowHwnd: bigint | number | null = null;
 
   private initPromise: Promise<PlayerServiceStatus> | null = null;
   private shutdownPromise: Promise<PlayerServiceStatus> | null = null;
@@ -86,12 +89,22 @@ export class NativePlayerService {
     duration: null,
     paused: true,
     volume: 100,
+    videoWidth: null,
+    videoHeight: null,
   };
 
   private playbackListeners = new Set<(status: PlaybackStatus) => void>();
 
   constructor(customFuncsGetter?: () => MpvFunctions) {
     this.funcsGetter = customFuncsGetter ?? (() => getMpvFunctions());
+  }
+
+  public setVideoWindowHwnd(hwnd: bigint | number | null): void {
+    this.videoWindowHwnd = hwnd;
+  }
+
+  public getVideoWindowHwnd(): bigint | number | null {
+    return this.videoWindowHwnd;
   }
 
   public getStatus(): PlayerServiceStatus {
@@ -190,9 +203,16 @@ export class NativePlayerService {
           throw new Error('Initialization aborted by shutdown request');
         }
 
-        // Configure headless embedding options before initialize
-        console.log('[NativePlayerService] configuring vo and idle...');
-        this.funcs.mpv_set_property_string(allocatedHandle, 'vo', 'null');
+        // Configure video output embedding options before initialize
+        console.log('[NativePlayerService] configuring vo, wid, and idle...');
+        if (this.videoWindowHwnd && this.videoWindowHwnd !== 0 && this.videoWindowHwnd !== 0n) {
+          console.log('[NativePlayerService] Embedding into native child HWND:', String(this.videoWindowHwnd));
+          this.funcs.mpv_set_property_string(allocatedHandle, 'wid', String(this.videoWindowHwnd));
+          this.funcs.mpv_set_property_string(allocatedHandle, 'vo', 'gpu');
+        } else {
+          console.log('[NativePlayerService] No video HWND provided; falling back to vo=null');
+          this.funcs.mpv_set_property_string(allocatedHandle, 'vo', 'null');
+        }
         this.funcs.mpv_set_property_string(allocatedHandle, 'idle', 'yes');
 
         console.log('[NativePlayerService] calling mpv_initialize()...');
@@ -212,6 +232,8 @@ export class NativePlayerService {
         this.funcs.mpv_observe_property(allocatedHandle, 3, 'duration', 0);
         this.funcs.mpv_observe_property(allocatedHandle, 4, 'volume', 0);
         this.funcs.mpv_observe_property(allocatedHandle, 5, 'eof-reached', 0);
+        this.funcs.mpv_observe_property(allocatedHandle, 6, 'dwidth', 0);
+        this.funcs.mpv_observe_property(allocatedHandle, 7, 'dheight', 0);
 
         this.handle = allocatedHandle;
         this.state = 'initialized';
@@ -359,6 +381,18 @@ export class NativePlayerService {
     if (posStr !== null) {
       const posNum = parseFloat(posStr);
       this.playbackStatus.position = Number.isFinite(posNum) ? posNum : null;
+    }
+
+    const dwidthStr = safeGetMpvPropertyString(this.funcs, this.handle, 'dwidth');
+    if (dwidthStr !== null) {
+      const w = parseInt(dwidthStr, 10);
+      this.playbackStatus.videoWidth = Number.isFinite(w) && w > 0 ? w : null;
+    }
+
+    const dheightStr = safeGetMpvPropertyString(this.funcs, this.handle, 'dheight');
+    if (dheightStr !== null) {
+      const h = parseInt(dheightStr, 10);
+      this.playbackStatus.videoHeight = Number.isFinite(h) && h > 0 ? h : null;
     }
     console.log('[refreshStateFromNative] done refreshing!');
   }
@@ -591,6 +625,8 @@ export class NativePlayerService {
           duration: null,
           paused: true,
           volume: 100,
+          videoWidth: null,
+          videoHeight: null,
         };
         this.notifyPlaybackChange();
 

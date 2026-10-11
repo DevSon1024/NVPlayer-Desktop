@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import {
   PlaySquare,
   Library,
@@ -51,8 +51,46 @@ export const App: React.FC = () => {
     duration: null,
     paused: true,
     volume: 100,
+    videoWidth: null,
+    videoHeight: null,
   });
   const [activeTab, setActiveTab] = useState<'player' | 'library' | 'playlists' | 'recent' | 'settings'>('player');
+
+  const videoViewportRef = useRef<HTMLDivElement>(null);
+
+  // Synchronize video viewport dimensions with the native child window
+  const updateVideoBounds = useCallback(() => {
+    if (!videoViewportRef.current || !window.nosvedAPI?.setVideoBounds) return;
+    const isVisible = Boolean(playbackStatus.currentFile && playbackStatus.mediaState !== 'idle');
+    const rect = videoViewportRef.current.getBoundingClientRect();
+    window.nosvedAPI
+      .setVideoBounds({
+        x: Math.round(rect.left),
+        y: Math.round(rect.top),
+        width: Math.round(rect.width),
+        height: Math.round(rect.height),
+        visible: isVisible,
+      })
+      .catch(console.error);
+  }, [playbackStatus.currentFile, playbackStatus.mediaState]);
+
+  useEffect(() => {
+    updateVideoBounds();
+  }, [updateVideoBounds]);
+
+  useEffect(() => {
+    const el = videoViewportRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => {
+      updateVideoBounds();
+    });
+    ro.observe(el);
+    window.addEventListener('resize', updateVideoBounds);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', updateVideoBounds);
+    };
+  }, [updateVideoBounds]);
 
   // Verify in-renderer isolation
   const nodeDirectAccessDetected =
@@ -196,52 +234,52 @@ export const App: React.FC = () => {
 
           <button
             type="button"
-            className={`nav-item disabled`}
-            title="Library navigation will be introduced in upcoming phases"
+            className="nav-item disabled"
+            title="Media library will be available in a future release"
           >
             <div className="nav-item-content">
               <Library size={18} />
               <span>Library</span>
             </div>
-            <span className="phase-pill">Phase 3</span>
+            <span className="coming-soon-pill">Soon</span>
           </button>
 
           <button
             type="button"
-            className={`nav-item disabled`}
-            title="Playlists will be introduced in upcoming phases"
+            className="nav-item disabled"
+            title="Playlists will be available in a future release"
           >
             <div className="nav-item-content">
               <ListMusic size={18} />
               <span>Playlists</span>
             </div>
-            <span className="phase-pill">Phase 3</span>
+            <span className="coming-soon-pill">Soon</span>
           </button>
 
           <button
             type="button"
-            className={`nav-item disabled`}
-            title="Recent history will be introduced in upcoming phases"
+            className="nav-item disabled"
+            title="Playback history will be available in a future release"
           >
             <div className="nav-item-content">
               <History size={18} />
               <span>Recent</span>
             </div>
-            <span className="phase-pill">Phase 3</span>
+            <span className="coming-soon-pill">Soon</span>
           </button>
 
           <span className="nav-label" style={{ marginTop: '12px' }}>System</span>
 
           <button
             type="button"
-            className={`nav-item disabled`}
-            title="Settings will be introduced in upcoming phases"
+            className="nav-item disabled"
+            title="Player settings will be available in a future release"
           >
             <div className="nav-item-content">
               <Settings size={18} />
               <span>Settings</span>
             </div>
-            <span className="phase-pill">Phase 4</span>
+            <span className="coming-soon-pill">Soon</span>
           </button>
         </nav>
 
@@ -274,12 +312,26 @@ export const App: React.FC = () => {
           <div className="header-status-group">
             <div className="status-indicator">
               <div className="status-dot" />
-              <span>Phase 1: Secure Shell Ready</span>
+              <span>Desktop Engine Ready</span>
             </div>
             <span className="arch-tag">
               {appInfo ? `${appInfo.platform}-${appInfo.arch}` : 'win32-x64'}
             </span>
           </div>
+
+          {playbackStatus.currentFile && (
+            <div className="header-media-info" title={playbackStatus.currentFile}>
+              <Film size={14} />
+              <span className="header-media-title">
+                {playbackStatus.currentFile.split(/[/\\]/).pop() || playbackStatus.currentFile}
+              </span>
+              {playbackStatus.videoWidth && playbackStatus.videoHeight && (
+                <span className="resolution-badge">
+                  {playbackStatus.videoWidth}x{playbackStatus.videoHeight}
+                </span>
+              )}
+            </div>
+          )}
 
           <span className="arch-tag" style={{ color: '#a8c7fa' }}>
             v{appInfo?.version || '0.1.0'}
@@ -296,61 +348,50 @@ export const App: React.FC = () => {
             </div>
           )}
 
-          {/* Central 16:9 Player Container */}
+          {/* Central Player Container */}
           <div className="player-container">
-            {playbackStatus.currentFile ? (
-              <div className="player-active-surface">
-                <div className="player-center-info">
-                  <div className="player-media-badge">
-                    <Film size={32} />
-                  </div>
-                  <div className="player-file-title" title={playbackStatus.currentFile}>
-                    {playbackStatus.currentFile.split(/[/\\]/).pop() || playbackStatus.currentFile}
-                  </div>
-                  <div className="player-status-chips">
-                    <span className={`status-pill status-${playbackStatus.mediaState}`}>
-                      {playbackStatus.mediaState.toUpperCase()}
-                    </span>
-                    <span className="phase-pill">
-                      Phase 5: Event Loop & Controls
-                    </span>
-                  </div>
+            <div className="player-video-viewport" ref={videoViewportRef}>
+              {playbackStatus.currentFile ? (
+                <>
+                  {playbackStatus.mediaState === 'loading' && (
+                    <div className="player-loading-overlay">
+                      <div className="loading-spinner" />
+                      <span>Loading Media Stream...</span>
+                    </div>
+                  )}
                   {playbackStatus.error && (
-                    <div className="player-error-banner">
+                    <div className="player-error-banner" style={{ margin: 16 }}>
                       <AlertCircle size={16} />
                       <span>{playbackStatus.error}</span>
                     </div>
                   )}
-                  <p className="player-render-notice">
-                    Native libmpv playback active in headless mode. Video rendering is strictly deferred to Phase 6.
-                  </p>
-                </div>
-              </div>
-            ) : (
-              <div className="player-empty-state">
-                <div className="player-placeholder-icon">
-                  <Film size={32} />
-                </div>
-                <h2 className="player-empty-title">Ready for Playback</h2>
-                <p className="player-empty-desc">
-                  Native libmpv engine initialized. Select a local video file to begin playback and verify event handling.
-                </p>
-                {playbackStatus.error && (
-                  <div className="player-error-banner" style={{ marginTop: 12 }}>
-                    <AlertCircle size={16} />
-                    <span>{playbackStatus.error}</span>
+                </>
+              ) : (
+                <div className="player-empty-state">
+                  <div className="player-placeholder-icon">
+                    <Film size={32} />
                   </div>
-                )}
-                <button
-                  type="button"
-                  className="open-file-btn"
-                  onClick={handleOpenFile}
-                >
-                  <FolderOpen size={18} />
-                  <span>Open Video File</span>
-                </button>
-              </div>
-            )}
+                  <h2 className="player-empty-title">Ready for Playback</h2>
+                  <p className="player-empty-desc">
+                    Native libmpv engine initialized. Select a local video file to begin hardware-accelerated playback.
+                  </p>
+                  {playbackStatus.error && (
+                    <div className="player-error-banner" style={{ marginTop: 12 }}>
+                      <AlertCircle size={16} />
+                      <span>{playbackStatus.error}</span>
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    className="open-file-btn"
+                    onClick={handleOpenFile}
+                  >
+                    <FolderOpen size={18} />
+                    <span>Open Video File</span>
+                  </button>
+                </div>
+              )}
+            </div>
 
             {/* Playback Controls Overlay Bar */}
             <div className="player-controls-bar">
@@ -419,6 +460,12 @@ export const App: React.FC = () => {
                 <span className="volume-label">
                   {Math.round(playbackStatus.volume)}%
                 </span>
+
+                {playbackStatus.currentFile && (
+                  <span className={`status-pill status-${playbackStatus.mediaState}`}>
+                    {playbackStatus.mediaState.toUpperCase()}
+                  </span>
+                )}
               </div>
             </div>
           </div>
@@ -440,18 +487,18 @@ export const App: React.FC = () => {
                   <span className="row-status-verified">{playbackStatus.mediaState}</span>
                 </div>
                 <div className="card-row">
-                  <span className="row-label">C Headers</span>
-                  <span className="row-value">include/mpv (client.h, render.h)</span>
+                  <span className="row-label">Video Surface</span>
+                  <span className="row-value">
+                    {playbackStatus.videoWidth && playbackStatus.videoHeight
+                      ? `${playbackStatus.videoWidth}x${playbackStatus.videoHeight} (Win32 HWND)`
+                      : 'Win32 Child HWND (vo=gpu)'}
+                  </span>
                 </div>
                 <div className="card-row">
                   <span className="row-label">libmpv API</span>
                   <span className="row-value">
                     {nativePoc?.apiVersion?.formatted ? `v${nativePoc.apiVersion.formatted} Connected` : 'Probing...'}
                   </span>
-                </div>
-                <div className="card-row">
-                  <span className="row-label">Volume / Paused</span>
-                  <span className="row-value">{Math.round(playbackStatus.volume)}% / {playbackStatus.paused ? 'Paused' : 'Playing'}</span>
                 </div>
                 <div className="card-row">
                   <span className="row-label">Player Service</span>
@@ -494,12 +541,12 @@ export const App: React.FC = () => {
               </div>
               <div className="card-rows">
                 <div className="card-row">
-                  <span className="row-label">Frontend Stack</span>
-                  <span className="row-value">React 19 + TypeScript 5.7</span>
+                  <span className="row-label">Rendering Mode</span>
+                  <span className="row-value">Direct3D HW-Accel (vo=gpu)</span>
                 </div>
                 <div className="card-row">
-                  <span className="row-label">Bundler</span>
-                  <span className="row-value">Vite 6 + vite-plugin-electron</span>
+                  <span className="row-label">Frontend Stack</span>
+                  <span className="row-value">React 19 + TypeScript 5.7</span>
                 </div>
                 <div className="card-row">
                   <span className="row-label">Desktop Runtime</span>

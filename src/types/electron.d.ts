@@ -68,6 +68,7 @@ export interface NosvedAPI {
   togglePause: () => Promise<PlaybackStatus>;
   seek: (positionSeconds: number) => Promise<PlaybackStatus>;
   setVolume: (volumePercent: number) => Promise<PlaybackStatus>;
+  setVideoBounds: (bounds: { x: number; y: number; width: number; height: number; visible?: boolean }) => Promise<{ success: boolean }>;
   getPlaybackStatus: () => Promise<PlaybackStatus>;
   onPlaybackStatus: (callback: (status: PlaybackStatus) => void) => void;
 }
@@ -79,6 +80,8 @@ export interface PlaybackStatus {
   duration: number | null;
   paused: boolean;
   volume: number;
+  videoWidth?: number | null;
+  videoHeight?: number | null;
   error?: string;
 }
 
