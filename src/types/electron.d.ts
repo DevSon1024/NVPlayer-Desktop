@@ -27,6 +27,36 @@ export interface NosvedAPI {
     error?: string;
     errorCode?: number;
   }>;
+  initializePlayer: () => Promise<{
+    state: string;
+    apiVersion?: {
+      raw: number;
+      major: number;
+      minor: number;
+      formatted: string;
+    };
+    error?: string;
+  }>;
+  getPlayerStatus: () => Promise<{
+    state: string;
+    apiVersion?: {
+      raw: number;
+      major: number;
+      minor: number;
+      formatted: string;
+    };
+    error?: string;
+  }>;
+  shutdownPlayer: () => Promise<{
+    state: string;
+    apiVersion?: {
+      raw: number;
+      major: number;
+      minor: number;
+      formatted: string;
+    };
+    error?: string;
+  }>;
 }
 
 declare global {

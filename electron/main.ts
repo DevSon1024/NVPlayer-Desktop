@@ -1,6 +1,10 @@
 import { app, BrowserWindow, ipcMain, session } from 'electron';
 import path from 'node:path';
 import { runMpvProofOfConcept } from './native/mpv-bindings';
+import { NativePlayerService } from './native/player-service';
+
+// Single active player lifecycle service for the main process
+const playerService = new NativePlayerService();
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (process.platform === 'win32') {
@@ -97,12 +101,21 @@ function createWindow(): void {
               const brand = document.querySelector('.brand-title');
               if (root && root.children.length > 0 && brand) {
                 let nativeMpvResult = null;
+                let playerStatusResult = null;
                 try {
                   if (typeof window.nosvedAPI?.testNativeMpv === 'function') {
                     nativeMpvResult = await window.nosvedAPI.testNativeMpv();
                   }
                 } catch (e) {
                   nativeMpvResult = { success: false, error: String(e) };
+                }
+
+                try {
+                  if (typeof window.nosvedAPI?.getPlayerStatus === 'function') {
+                    playerStatusResult = await window.nosvedAPI.getPlayerStatus();
+                  }
+                } catch (e) {
+                  playerStatusResult = { state: 'failed', error: String(e) };
                 }
 
                 resolve({
@@ -113,7 +126,8 @@ function createWindow(): void {
                   rootChildCount: root.children.length,
                   brandTitle: brand.textContent,
                   isIsolated: typeof window.nosvedAPI?.getSecurityState === 'function',
-                  nativeMpvResult
+                  nativeMpvResult,
+                  playerStatusResult
                 });
               } else {
                 setTimeout(check, 50);
@@ -184,6 +198,32 @@ function registerIpcHandlers(): void {
     }
     return runMpvProofOfConcept();
   });
+
+  ipcMain.handle('player:initialize', async (event, ...args: unknown[]) => {
+    if (!validateIpcSender(event)) {
+      throw new Error('Unauthorized IPC invocation: Sender validation failed');
+    }
+    if (args.length > 0 && typeof args[0] !== 'undefined') {
+      if (typeof args[0] !== 'object' || args[0] === null) {
+        throw new Error('Invalid arguments provided to player:initialize');
+      }
+    }
+    return playerService.initialize();
+  });
+
+  ipcMain.handle('player:get-status', (event) => {
+    if (!validateIpcSender(event)) {
+      throw new Error('Unauthorized IPC invocation: Sender validation failed');
+    }
+    return playerService.getStatus();
+  });
+
+  ipcMain.handle('player:shutdown', async (event) => {
+    if (!validateIpcSender(event)) {
+      throw new Error('Unauthorized IPC invocation: Sender validation failed');
+    }
+    return playerService.shutdown();
+  });
 }
 
 // App lifecycle
@@ -210,8 +250,22 @@ app.whenReady().then(() => {
   });
 });
 
-app.on('window-all-closed', () => {
+app.on('window-all-closed', async () => {
+  try {
+    await playerService.shutdown();
+  } catch (err) {
+    console.error('[App] Error during player service shutdown on window close:', err);
+  }
+
   if (process.platform !== 'darwin') {
     app.quit();
+  }
+});
+
+app.on('before-quit', async () => {
+  try {
+    await playerService.shutdown();
+  } catch (err) {
+    console.error('[App] Error during player service shutdown before quit:', err);
   }
 });

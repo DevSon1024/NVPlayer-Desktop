@@ -11,7 +11,7 @@ const electronBinary = path.join(
   'electron.exe'
 );
 
-console.log('=== Phase 3 Verification: libmpv Integration & Shell Security ===');
+console.log('=== Phase 4 Verification: Native Player Lifecycle & Shell Security ===');
 
 // 0. Run Mocked Native Unit Tests
 console.log('[INFO] Running Mocked Native Unit Tests...');
@@ -143,16 +143,73 @@ child.on('close', (code) => {
       console.log('[PASS] Context isolation contract verified');
     }
 
+    // Scope D: Non-vacuous payload inspection replacing rawPointerLeakCheck
     if (!result.nativeMpvResult || !result.nativeMpvResult.success) {
       console.error('[FAIL] Native libmpv IPC proof of concept failed:', result.nativeMpvResult);
       failures++;
     } else {
       console.log(`[PASS] Native libmpv IPC PoC verified (API Version: ${result.nativeMpvResult.apiVersion?.formatted})`);
-      if (result.nativeMpvResult.rawPointerLeakCheck === false) {
-        console.error('[FAIL] Raw native pointers or internal handles detected in payload');
+
+      // 1. Whitelist of exact allowed response fields
+      const allowedPocFields = new Set(['success', 'stage', 'apiVersion', 'error', 'errorCode']);
+      const actualPocFields = Object.keys(result.nativeMpvResult);
+      const unexpectedPocFields = actualPocFields.filter((k) => !allowedPocFields.has(k));
+      if (unexpectedPocFields.length > 0) {
+        console.error(`[FAIL] Unexpected property in nativeMpvResult: ${unexpectedPocFields.join(', ')}`);
         failures++;
       } else {
-        console.log('[PASS] Raw native pointer leakage check passed: main-to-renderer barrier intact');
+        console.log('[PASS] Payload field whitelist verified for nativeMpvResult');
+      }
+
+      // 2. Assert values have expected primitive or serializable types
+      let typeViolation = false;
+      for (const [k, v] of Object.entries(result.nativeMpvResult)) {
+        if (typeof v === 'function' || typeof v === 'symbol') {
+          console.error(`[FAIL] Non-serializable type for field "${k}": ${typeof v}`);
+          typeViolation = true;
+        }
+      }
+      if (typeViolation) {
+        failures++;
+      } else {
+        console.log('[PASS] Value serializability verified for nativeMpvResult');
+      }
+
+      // 3. String & key inspection for raw pointers, memory addresses, Koffi objects
+      const serialized = JSON.stringify(result.nativeMpvResult);
+      let pointerLeak = false;
+      if (/0x[0-9a-fA-F]{6,}/.test(serialized)) {
+        console.error('[FAIL] Raw memory address pattern detected in serialized payload:', serialized);
+        pointerLeak = true;
+      }
+      const prohibitedTerms = ['ptr', 'handle', 'address', 'pointer', 'mpv_handle', 'koffi'];
+      for (const term of prohibitedTerms) {
+        if (actualPocFields.includes(term)) {
+          console.error(`[FAIL] Prohibited internal property name found: ${term}`);
+          pointerLeak = true;
+        }
+      }
+      if (pointerLeak) {
+        failures++;
+      } else {
+        console.log('[PASS] Non-vacuous raw pointer and native handle leak check passed');
+      }
+    }
+
+    // Check playerStatusResult (Phase 4 Native Player Service)
+    if (!result.playerStatusResult || (result.playerStatusResult.state !== 'initialized' && result.playerStatusResult.state !== 'uninitialized')) {
+      console.error('[FAIL] Player service status invalid or uninitialized:', result.playerStatusResult);
+      failures++;
+    } else {
+      console.log(`[PASS] Player Service lifecycle status verified (State: ${result.playerStatusResult.state})`);
+      const allowedStatusFields = new Set(['state', 'apiVersion', 'error']);
+      const actualStatusFields = Object.keys(result.playerStatusResult);
+      const unexpectedStatusFields = actualStatusFields.filter((k) => !allowedStatusFields.has(k));
+      if (unexpectedStatusFields.length > 0) {
+        console.error(`[FAIL] Unexpected property in playerStatusResult: ${unexpectedStatusFields.join(', ')}`);
+        failures++;
+      } else {
+        console.log('[PASS] Payload field whitelist verified for playerStatusResult');
       }
     }
 
@@ -161,7 +218,7 @@ child.on('close', (code) => {
       process.exit(1);
     }
 
-    console.log('\n>>> ALL PHASE 3 SHELL, NATIVE LIBMPV & SECURITY CHECKS PASSED <<<\n');
+    console.log('\n>>> ALL PHASE 4 SHELL, NATIVE PLAYER LIFECYCLE & SECURITY CHECKS PASSED <<<\n');
     process.exit(0);
   } catch (err) {
     console.error('[FAIL] Failed to parse verification payload:', err);

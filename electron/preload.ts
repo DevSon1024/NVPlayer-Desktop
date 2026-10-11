@@ -33,6 +33,36 @@ export interface NosvedAPI {
     error?: string;
     errorCode?: number;
   }>;
+  initializePlayer: () => Promise<{
+    state: string;
+    apiVersion?: {
+      raw: number;
+      major: number;
+      minor: number;
+      formatted: string;
+    };
+    error?: string;
+  }>;
+  getPlayerStatus: () => Promise<{
+    state: string;
+    apiVersion?: {
+      raw: number;
+      major: number;
+      minor: number;
+      formatted: string;
+    };
+    error?: string;
+  }>;
+  shutdownPlayer: () => Promise<{
+    state: string;
+    apiVersion?: {
+      raw: number;
+      major: number;
+      minor: number;
+      formatted: string;
+    };
+    error?: string;
+  }>;
 }
 
 const api: NosvedAPI = {
@@ -40,6 +70,9 @@ const api: NosvedAPI = {
   getSecurityState: () => ipcRenderer.invoke('app:get-security-state'),
   ping: () => ipcRenderer.invoke('app:ping'),
   testNativeMpv: () => ipcRenderer.invoke('app:test-native-mpv'),
+  initializePlayer: () => ipcRenderer.invoke('player:initialize'),
+  getPlayerStatus: () => ipcRenderer.invoke('player:get-status'),
+  shutdownPlayer: () => ipcRenderer.invoke('player:shutdown'),
 };
 
 contextBridge.exposeInMainWorld('nosvedAPI', api);

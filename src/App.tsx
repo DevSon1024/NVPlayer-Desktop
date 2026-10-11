@@ -30,6 +30,7 @@ export const App: React.FC = () => {
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
   const [securityState, setSecurityState] = useState<SecurityState | null>(null);
   const [nativePoc, setNativePoc] = useState<{ success: boolean; stage: string; apiVersion?: { formatted: string } } | null>(null);
+  const [playerStatus, setPlayerStatus] = useState<{ state: string; apiVersion?: { formatted: string }; error?: string } | null>(null);
   const [activeTab, setActiveTab] = useState<'player' | 'library' | 'playlists' | 'recent' | 'settings'>('player');
 
   // Verify in-renderer isolation
@@ -43,6 +44,7 @@ export const App: React.FC = () => {
       window.nosvedAPI.getAppInfo().then(setAppInfo).catch(console.error);
       window.nosvedAPI.getSecurityState().then(setSecurityState).catch(console.error);
       window.nosvedAPI.testNativeMpv().then(setNativePoc).catch(console.error);
+      window.nosvedAPI.initializePlayer().then(setPlayerStatus).catch(console.error);
     }
   }, []);
 
@@ -215,6 +217,12 @@ export const App: React.FC = () => {
                   <span className="row-label">Lifecycle PoC</span>
                   <span className="row-status-verified">
                     {nativePoc?.success ? 'Verified (Create -> Init -> Teardown)' : 'Pending'}
+                  </span>
+                </div>
+                <div className="card-row">
+                  <span className="row-label">Player Service</span>
+                  <span className="row-status-verified">
+                    {playerStatus?.state ? `State: ${playerStatus.state}` : 'Connecting...'}
                   </span>
                 </div>
               </div>
