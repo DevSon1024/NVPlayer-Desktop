@@ -85,8 +85,20 @@ export const App: React.FC = () => {
     }
   }, []);
 
+  const isDesktopBridge = typeof window !== 'undefined' && typeof window.nosvedAPI !== 'undefined';
+
+  const notifyBrowserBridgeMissing = () => {
+    setPlaybackStatus((prev) => ({
+      ...prev,
+      error: 'Desktop Bridge Unavailable: Native libmpv commands require the Electron application window. Regular browsers cannot access native C-ABI binaries.',
+    }));
+  };
+
   const handleOpenFile = async () => {
-    if (!window.nosvedAPI) return;
+    if (!window.nosvedAPI) {
+      notifyBrowserBridgeMissing();
+      return;
+    }
     try {
       const res = await window.nosvedAPI.openFileDialog();
       if (!res.canceled) {
@@ -98,7 +110,10 @@ export const App: React.FC = () => {
   };
 
   const handleTogglePlayPause = async () => {
-    if (!window.nosvedAPI) return;
+    if (!window.nosvedAPI) {
+      notifyBrowserBridgeMissing();
+      return;
+    }
     try {
       const res = await window.nosvedAPI.togglePause();
       setPlaybackStatus(res);
@@ -108,7 +123,10 @@ export const App: React.FC = () => {
   };
 
   const handleSeek = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!window.nosvedAPI) return;
+    if (!window.nosvedAPI) {
+      notifyBrowserBridgeMissing();
+      return;
+    }
     const pos = parseFloat(e.target.value);
     if (isNaN(pos)) return;
     try {
@@ -120,7 +138,10 @@ export const App: React.FC = () => {
   };
 
   const handleVolume = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!window.nosvedAPI) return;
+    if (!window.nosvedAPI) {
+      notifyBrowserBridgeMissing();
+      return;
+    }
     const vol = parseFloat(e.target.value);
     if (isNaN(vol)) return;
     try {
@@ -132,7 +153,10 @@ export const App: React.FC = () => {
   };
 
   const handleToggleMute = async () => {
-    if (!window.nosvedAPI) return;
+    if (!window.nosvedAPI) {
+      notifyBrowserBridgeMissing();
+      return;
+    }
     const newVol = playbackStatus.volume > 0 ? 0 : 100;
     try {
       const res = await window.nosvedAPI.setVolume(newVol);
@@ -263,6 +287,15 @@ export const App: React.FC = () => {
         </header>
 
         <section className="viewport-body">
+          {!isDesktopBridge && (
+            <div className="browser-diagnostic-banner" role="alert">
+              <AlertCircle size={16} />
+              <span>
+                <strong>Browser Preview Mode:</strong> Native Electron desktop bridge (window.nosvedAPI) is not available. Playback controls require the Electron desktop application window.
+              </span>
+            </div>
+          )}
+
           {/* Central 16:9 Player Container */}
           <div className="player-container">
             {playbackStatus.currentFile ? (
@@ -302,6 +335,12 @@ export const App: React.FC = () => {
                 <p className="player-empty-desc">
                   Native libmpv engine initialized. Select a local video file to begin playback and verify event handling.
                 </p>
+                {playbackStatus.error && (
+                  <div className="player-error-banner" style={{ marginTop: 12 }}>
+                    <AlertCircle size={16} />
+                    <span>{playbackStatus.error}</span>
+                  </div>
+                )}
                 <button
                   type="button"
                   className="open-file-btn"

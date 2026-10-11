@@ -97,11 +97,15 @@ function createWindow(): void {
     console.warn('[Security] Blocked attempt to attach webview');
   });
 
+  mainWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
+    console.log(`[Renderer Log (level ${level})]: ${message} (${sourceId}:${line})`);
+  });
+
+  mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+    console.error(`[Renderer Fail Load]: ${errorCode} - ${errorDescription} at ${validatedURL}`);
+  });
+
   if (process.env.NOSVED_TEST_MODE === '1') {
-    mainWindow.webContents.on('console-message', (event, ...rest) => {
-      const msg = (event as any)?.message ?? (typeof rest[1] === 'string' ? rest[1] : rest[0]);
-      console.log('[Renderer Log]:', msg);
-    });
 
     mainWindow.webContents.on('did-finish-load', async () => {
       console.log('[Test Mode] did-finish-load event received');
@@ -373,12 +377,14 @@ function registerIpcHandlers(): void {
 app.whenReady().then(() => {
   // Apply Content Security Policy header on HTTP responses as defense-in-depth
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    const csp = isDev
+      ? "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' ws://localhost:* http://localhost:* ws://127.0.0.1:* http://127.0.0.1:*; base-uri 'self'; form-action 'none'; object-src 'none';"
+      : "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' ws://localhost:* http://localhost:* ws://127.0.0.1:* http://127.0.0.1:*; base-uri 'self'; form-action 'none'; object-src 'none';";
+
     callback({
       responseHeaders: {
         ...details.responseHeaders,
-        'Content-Security-Policy': [
-          "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' ws://localhost:* http://localhost:* ws://127.0.0.1:* http://127.0.0.1:*; base-uri 'self'; form-action 'none'; object-src 'none';",
-        ],
+        'Content-Security-Policy': [csp],
       },
     });
   });
