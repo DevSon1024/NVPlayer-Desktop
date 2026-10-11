@@ -9,8 +9,14 @@ import {
   Cpu,
   Layers,
   Film,
-  CheckCircle2,
+  Play,
+  Pause,
+  FolderOpen,
+  Volume2,
+  VolumeX,
+  AlertCircle,
 } from 'lucide-react';
+import type { PlaybackStatus } from './types/electron';
 
 interface AppInfo {
   name: string;
@@ -26,11 +32,26 @@ interface SecurityState {
   sandboxEnabled: boolean;
 }
 
+function formatTime(seconds: number | null): string {
+  if (seconds === null || isNaN(seconds) || seconds < 0) return '--:--';
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+}
+
 export const App: React.FC = () => {
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
   const [securityState, setSecurityState] = useState<SecurityState | null>(null);
   const [nativePoc, setNativePoc] = useState<{ success: boolean; stage: string; apiVersion?: { formatted: string } } | null>(null);
   const [playerStatus, setPlayerStatus] = useState<{ state: string; apiVersion?: { formatted: string }; error?: string } | null>(null);
+  const [playbackStatus, setPlaybackStatus] = useState<PlaybackStatus>({
+    mediaState: 'idle',
+    currentFile: null,
+    position: null,
+    duration: null,
+    paused: true,
+    volume: 100,
+  });
   const [activeTab, setActiveTab] = useState<'player' | 'library' | 'playlists' | 'recent' | 'settings'>('player');
 
   // Verify in-renderer isolation
@@ -43,10 +64,83 @@ export const App: React.FC = () => {
     if (window.nosvedAPI) {
       window.nosvedAPI.getAppInfo().then(setAppInfo).catch(console.error);
       window.nosvedAPI.getSecurityState().then(setSecurityState).catch(console.error);
-      window.nosvedAPI.testNativeMpv().then(setNativePoc).catch(console.error);
-      window.nosvedAPI.initializePlayer().then(setPlayerStatus).catch(console.error);
+      window.nosvedAPI
+        .initializePlayer()
+        .then((initRes) => {
+          setPlayerStatus(initRes);
+          if (initRes.apiVersion) {
+            setNativePoc({
+              success: true,
+              stage: 'instance_initialized',
+              apiVersion: { formatted: initRes.apiVersion.formatted },
+            });
+          }
+        })
+        .catch(console.error);
+      window.nosvedAPI.getPlaybackStatus().then(setPlaybackStatus).catch(console.error);
+
+      window.nosvedAPI.onPlaybackStatus((status) => {
+        setPlaybackStatus(status);
+      });
     }
   }, []);
+
+  const handleOpenFile = async () => {
+    if (!window.nosvedAPI) return;
+    try {
+      const res = await window.nosvedAPI.openFileDialog();
+      if (!res.canceled) {
+        setPlaybackStatus(res.status);
+      }
+    } catch (err) {
+      console.error('Failed to open file dialog:', err);
+    }
+  };
+
+  const handleTogglePlayPause = async () => {
+    if (!window.nosvedAPI) return;
+    try {
+      const res = await window.nosvedAPI.togglePause();
+      setPlaybackStatus(res);
+    } catch (err) {
+      console.error('Failed to toggle play/pause:', err);
+    }
+  };
+
+  const handleSeek = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!window.nosvedAPI) return;
+    const pos = parseFloat(e.target.value);
+    if (isNaN(pos)) return;
+    try {
+      const res = await window.nosvedAPI.seek(pos);
+      setPlaybackStatus(res);
+    } catch (err) {
+      console.error('Failed to seek:', err);
+    }
+  };
+
+  const handleVolume = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!window.nosvedAPI) return;
+    const vol = parseFloat(e.target.value);
+    if (isNaN(vol)) return;
+    try {
+      const res = await window.nosvedAPI.setVolume(vol);
+      setPlaybackStatus(res);
+    } catch (err) {
+      console.error('Failed to set volume:', err);
+    }
+  };
+
+  const handleToggleMute = async () => {
+    if (!window.nosvedAPI) return;
+    const newVol = playbackStatus.volume > 0 ? 0 : 100;
+    try {
+      const res = await window.nosvedAPI.setVolume(newVol);
+      setPlaybackStatus(res);
+    } catch (err) {
+      console.error('Failed to toggle mute:', err);
+    }
+  };
 
   return (
     <div className="app-layout">
@@ -171,18 +265,121 @@ export const App: React.FC = () => {
         <section className="viewport-body">
           {/* Central 16:9 Player Container */}
           <div className="player-container">
-            <div className="player-empty-state">
-              <div className="player-placeholder-icon">
-                <Film size={32} />
+            {playbackStatus.currentFile ? (
+              <div className="player-active-surface">
+                <div className="player-center-info">
+                  <div className="player-media-badge">
+                    <Film size={32} />
+                  </div>
+                  <div className="player-file-title" title={playbackStatus.currentFile}>
+                    {playbackStatus.currentFile.split(/[/\\]/).pop() || playbackStatus.currentFile}
+                  </div>
+                  <div className="player-status-chips">
+                    <span className={`status-pill status-${playbackStatus.mediaState}`}>
+                      {playbackStatus.mediaState.toUpperCase()}
+                    </span>
+                    <span className="phase-pill">
+                      Phase 5: Event Loop & Controls
+                    </span>
+                  </div>
+                  {playbackStatus.error && (
+                    <div className="player-error-banner">
+                      <AlertCircle size={16} />
+                      <span>{playbackStatus.error}</span>
+                    </div>
+                  )}
+                  <p className="player-render-notice">
+                    Native libmpv playback active in headless mode. Video rendering is strictly deferred to Phase 6.
+                  </p>
+                </div>
               </div>
-              <h2 className="player-empty-title">Playback Engine Dormant</h2>
-              <p className="player-empty-desc">
-                Phase 1 secure application shell is active. The native <code>libmpv</code> playback engine
-                is staged and will be initialized in Phase 2 via high-performance native bridging.
-              </p>
-              <div className="player-state-pill">
-                <CheckCircle2 size={14} />
-                <span>Zero fake controls rendered &bull; Strict phase boundary maintained</span>
+            ) : (
+              <div className="player-empty-state">
+                <div className="player-placeholder-icon">
+                  <Film size={32} />
+                </div>
+                <h2 className="player-empty-title">Ready for Playback</h2>
+                <p className="player-empty-desc">
+                  Native libmpv engine initialized. Select a local video file to begin playback and verify event handling.
+                </p>
+                <button
+                  type="button"
+                  className="open-file-btn"
+                  onClick={handleOpenFile}
+                >
+                  <FolderOpen size={18} />
+                  <span>Open Video File</span>
+                </button>
+              </div>
+            )}
+
+            {/* Playback Controls Overlay Bar */}
+            <div className="player-controls-bar">
+              <div className="controls-left">
+                <button
+                  type="button"
+                  className="control-btn primary-play-btn"
+                  onClick={handleTogglePlayPause}
+                  disabled={!playbackStatus.currentFile || playbackStatus.mediaState === 'loading'}
+                  title={playbackStatus.paused ? 'Play' : 'Pause'}
+                >
+                  {playbackStatus.paused ? <Play size={18} /> : <Pause size={18} />}
+                </button>
+
+                <button
+                  type="button"
+                  className="control-btn"
+                  onClick={handleOpenFile}
+                  title="Open Video File"
+                >
+                  <FolderOpen size={16} />
+                </button>
+
+                <div className="time-display">
+                  <span>{formatTime(playbackStatus.position)}</span>
+                  <span className="time-sep">/</span>
+                  <span>{formatTime(playbackStatus.duration)}</span>
+                </div>
+              </div>
+
+              <div className="controls-center">
+                <input
+                  type="range"
+                  className="seek-slider"
+                  min={0}
+                  max={playbackStatus.duration && playbackStatus.duration > 0 ? playbackStatus.duration : 100}
+                  step={0.1}
+                  value={playbackStatus.position ?? 0}
+                  onChange={handleSeek}
+                  disabled={!playbackStatus.currentFile || !playbackStatus.duration}
+                  title="Seek position"
+                />
+              </div>
+
+              <div className="controls-right">
+                <button
+                  type="button"
+                  className="control-btn"
+                  onClick={handleToggleMute}
+                  title={playbackStatus.volume === 0 ? 'Unmute' : 'Mute'}
+                >
+                  {playbackStatus.volume === 0 ? <VolumeX size={16} /> : <Volume2 size={16} />}
+                </button>
+
+                <input
+                  type="range"
+                  className="volume-slider"
+                  min={0}
+                  max={100}
+                  step={1}
+                  value={playbackStatus.volume}
+                  onChange={handleVolume}
+                  title={`Volume: ${Math.round(playbackStatus.volume)}%`}
+                />
+
+                <span className="volume-label">
+                  {Math.round(playbackStatus.volume)}%
+                </span>
               </div>
             </div>
           </div>
@@ -200,8 +397,8 @@ export const App: React.FC = () => {
                   <span className="row-value">windows/x64/libmpv-2.dll</span>
                 </div>
                 <div className="card-row">
-                  <span className="row-label">Import Library</span>
-                  <span className="row-value">windows/x64/libmpv.dll.a</span>
+                  <span className="row-label">Playback State</span>
+                  <span className="row-status-verified">{playbackStatus.mediaState}</span>
                 </div>
                 <div className="card-row">
                   <span className="row-label">C Headers</span>
@@ -214,10 +411,8 @@ export const App: React.FC = () => {
                   </span>
                 </div>
                 <div className="card-row">
-                  <span className="row-label">Lifecycle PoC</span>
-                  <span className="row-status-verified">
-                    {nativePoc?.success ? 'Verified (Create -> Init -> Teardown)' : 'Pending'}
-                  </span>
+                  <span className="row-label">Volume / Paused</span>
+                  <span className="row-value">{Math.round(playbackStatus.volume)}% / {playbackStatus.paused ? 'Paused' : 'Playing'}</span>
                 </div>
                 <div className="card-row">
                   <span className="row-label">Player Service</span>

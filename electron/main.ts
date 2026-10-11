@@ -1,10 +1,17 @@
-import { app, BrowserWindow, ipcMain, session } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, session } from 'electron';
 import path from 'node:path';
 import { runMpvProofOfConcept } from './native/mpv-bindings';
-import { NativePlayerService } from './native/player-service';
+import { NativePlayerService, SUPPORTED_VIDEO_EXTENSIONS } from './native/player-service';
 
 // Single active player lifecycle service for the main process
 const playerService = new NativePlayerService();
+
+// Broadcast playback changes to renderer
+playerService.onPlaybackStatusChange((status) => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('player:playback-status-update', status);
+  }
+});
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (process.platform === 'win32') {
@@ -91,31 +98,59 @@ function createWindow(): void {
   });
 
   if (process.env.NOSVED_TEST_MODE === '1') {
+    mainWindow.webContents.on('console-message', (event, ...rest) => {
+      const msg = (event as any)?.message ?? (typeof rest[1] === 'string' ? rest[1] : rest[0]);
+      console.log('[Renderer Log]:', msg);
+    });
+
     mainWindow.webContents.on('did-finish-load', async () => {
+      console.log('[Test Mode] did-finish-load event received');
       try {
         // Wait briefly for React to mount
         const testResult = await mainWindow?.webContents.executeJavaScript(`
           new Promise((resolve) => {
+            let attempts = 0;
             const check = async () => {
+              attempts++;
               const root = document.getElementById('root');
               const brand = document.querySelector('.brand-title');
               if (root && root.children.length > 0 && brand) {
+                console.log('[Test Mode Script] DOM mounted, inspecting API...');
                 let nativeMpvResult = null;
                 let playerStatusResult = null;
+                let playbackStatusResult = null;
+
                 try {
                   if (typeof window.nosvedAPI?.testNativeMpv === 'function') {
+                    console.log('[Test Mode Script] Calling testNativeMpv...');
                     nativeMpvResult = await window.nosvedAPI.testNativeMpv();
+                    console.log('[Test Mode Script] testNativeMpv finished:', JSON.stringify(nativeMpvResult));
                   }
                 } catch (e) {
+                  console.log('[Test Mode Script] testNativeMpv threw:', String(e));
                   nativeMpvResult = { success: false, error: String(e) };
                 }
 
                 try {
                   if (typeof window.nosvedAPI?.getPlayerStatus === 'function') {
+                    console.log('[Test Mode Script] Calling getPlayerStatus...');
                     playerStatusResult = await window.nosvedAPI.getPlayerStatus();
+                    console.log('[Test Mode Script] getPlayerStatus finished:', JSON.stringify(playerStatusResult));
                   }
                 } catch (e) {
+                  console.log('[Test Mode Script] getPlayerStatus threw:', String(e));
                   playerStatusResult = { state: 'failed', error: String(e) };
+                }
+
+                try {
+                  if (typeof window.nosvedAPI?.getPlaybackStatus === 'function') {
+                    console.log('[Test Mode Script] Calling getPlaybackStatus...');
+                    playbackStatusResult = await window.nosvedAPI.getPlaybackStatus();
+                    console.log('[Test Mode Script] getPlaybackStatus finished:', JSON.stringify(playbackStatusResult));
+                  }
+                } catch (e) {
+                  console.log('[Test Mode Script] getPlaybackStatus threw:', String(e));
+                  playbackStatusResult = { error: String(e) };
                 }
 
                 resolve({
@@ -127,10 +162,16 @@ function createWindow(): void {
                   brandTitle: brand.textContent,
                   isIsolated: typeof window.nosvedAPI?.getSecurityState === 'function',
                   nativeMpvResult,
-                  playerStatusResult
+                  playerStatusResult,
+                  playbackStatusResult,
                 });
-              } else {
+              } else if (attempts < 80) {
                 setTimeout(check, 50);
+              } else {
+                resolve({
+                  error: 'Timeout waiting for React DOM mount',
+                  hasNosvedAPI: typeof window.nosvedAPI !== 'undefined',
+                });
               }
             };
             check();
@@ -196,6 +237,22 @@ function registerIpcHandlers(): void {
     if (!validateIpcSender(event)) {
       throw new Error('Unauthorized IPC invocation: Sender validation failed');
     }
+    const currentStatus = playerService.getStatus();
+    if (currentStatus.state === 'initialized' && currentStatus.apiVersion) {
+      return {
+        success: true,
+        stage: 'instance_initialized',
+        apiVersion: currentStatus.apiVersion,
+      };
+    }
+    if (currentStatus.state === 'initializing') {
+      const res = await playerService.initialize();
+      return {
+        success: res.state === 'initialized',
+        stage: 'instance_initialized',
+        apiVersion: res.apiVersion,
+      };
+    }
     return runMpvProofOfConcept();
   });
 
@@ -223,6 +280,92 @@ function registerIpcHandlers(): void {
       throw new Error('Unauthorized IPC invocation: Sender validation failed');
     }
     return playerService.shutdown();
+  });
+
+  ipcMain.handle('player:open-file-dialog', async (event) => {
+    if (!validateIpcSender(event)) {
+      throw new Error('Unauthorized IPC invocation: Sender validation failed');
+    }
+    if (!mainWindow) {
+      throw new Error('Window is not available');
+    }
+
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: 'Select Video File',
+      filters: [
+        {
+          name: 'Video Files',
+          extensions: SUPPORTED_VIDEO_EXTENSIONS.map((ext) => ext.replace('.', '')),
+        },
+      ],
+      properties: ['openFile'],
+    });
+
+    if (result.canceled || result.filePaths.length === 0) {
+      return { canceled: true, status: playerService.getPlaybackStatus() };
+    }
+
+    const selectedPath = result.filePaths[0];
+    const status = await playerService.loadMedia(selectedPath);
+    return { canceled: false, filePath: selectedPath, status };
+  });
+
+  ipcMain.handle('player:load-file', async (event, filePath: unknown) => {
+    if (!validateIpcSender(event)) {
+      throw new Error('Unauthorized IPC invocation: Sender validation failed');
+    }
+    if (typeof filePath !== 'string' || !filePath.trim()) {
+      throw new Error('Invalid argument: File path must be a non-empty string');
+    }
+    return playerService.loadMedia(filePath);
+  });
+
+  ipcMain.handle('player:play', async (event) => {
+    if (!validateIpcSender(event)) {
+      throw new Error('Unauthorized IPC invocation: Sender validation failed');
+    }
+    return playerService.play();
+  });
+
+  ipcMain.handle('player:pause', async (event) => {
+    if (!validateIpcSender(event)) {
+      throw new Error('Unauthorized IPC invocation: Sender validation failed');
+    }
+    return playerService.pause();
+  });
+
+  ipcMain.handle('player:toggle-pause', async (event) => {
+    if (!validateIpcSender(event)) {
+      throw new Error('Unauthorized IPC invocation: Sender validation failed');
+    }
+    return playerService.togglePause();
+  });
+
+  ipcMain.handle('player:seek', async (event, positionSeconds: unknown) => {
+    if (!validateIpcSender(event)) {
+      throw new Error('Unauthorized IPC invocation: Sender validation failed');
+    }
+    if (typeof positionSeconds !== 'number' || !Number.isFinite(positionSeconds)) {
+      throw new Error('Invalid argument: Seek position must be a finite number');
+    }
+    return playerService.seek(positionSeconds);
+  });
+
+  ipcMain.handle('player:set-volume', async (event, volumePercent: unknown) => {
+    if (!validateIpcSender(event)) {
+      throw new Error('Unauthorized IPC invocation: Sender validation failed');
+    }
+    if (typeof volumePercent !== 'number' || !Number.isFinite(volumePercent)) {
+      throw new Error('Invalid argument: Volume must be a finite number');
+    }
+    return playerService.setVolume(volumePercent);
+  });
+
+  ipcMain.handle('player:get-playback-status', (event) => {
+    if (!validateIpcSender(event)) {
+      throw new Error('Unauthorized IPC invocation: Sender validation failed');
+    }
+    return playerService.getPlaybackStatus();
   });
 }
 

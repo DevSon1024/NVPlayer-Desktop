@@ -11,7 +11,7 @@ const electronBinary = path.join(
   'electron.exe'
 );
 
-console.log('=== Phase 4 Verification: Native Player Lifecycle & Shell Security ===');
+console.log('=== Phase 5 Verification: Playback Engine, Async Events & Shell Security ===');
 
 // 0. Run Mocked Native Unit Tests
 console.log('[INFO] Running Mocked Native Unit Tests...');
@@ -24,6 +24,29 @@ if (unitResult.status !== 0) {
   process.exit(1);
 }
 console.log('[PASS] Native unit test suite passed successfully.\n');
+
+console.log('[INFO] Running Mocked Playback Engine Unit Tests...');
+const playbackResult = spawnSync(process.execPath, [path.join(rootDir, 'scripts', 'test-playback-unit.mjs')], {
+  cwd: rootDir,
+  stdio: 'inherit',
+});
+if (playbackResult.status !== 0) {
+  console.error('[FAIL] Playback unit test suite failed!');
+  process.exit(1);
+}
+console.log('[PASS] Playback unit test suite passed successfully.\n');
+
+console.log('[INFO] Running Real Windows x64 Native Playback Smoke Test...');
+const realPlaybackResult = spawnSync(process.execPath, [path.join(rootDir, 'scripts', 'smoke-test-playback.mjs')], {
+  cwd: rootDir,
+  stdio: 'inherit',
+});
+if (realPlaybackResult.status !== 0) {
+  console.error('[FAIL] Real native playback smoke test failed!');
+  process.exit(1);
+}
+console.log('[PASS] Real native playback smoke test passed successfully.\n');
+
 
 // 1. Verify windows/x64 native assets
 const requiredNativeAssets = [
@@ -196,7 +219,7 @@ child.on('close', (code) => {
       }
     }
 
-    // Check playerStatusResult (Phase 4 Native Player Service)
+    // Check playerStatusResult (Native Player Service)
     if (!result.playerStatusResult || (result.playerStatusResult.state !== 'initialized' && result.playerStatusResult.state !== 'uninitialized')) {
       console.error('[FAIL] Player service status invalid or uninitialized:', result.playerStatusResult);
       failures++;
@@ -213,12 +236,37 @@ child.on('close', (code) => {
       }
     }
 
+    // Check playbackStatusResult (Phase 5 Playback Engine Status)
+    if (!result.playbackStatusResult || typeof result.playbackStatusResult.mediaState !== 'string') {
+      console.error('[FAIL] Playback status invalid or missing:', result.playbackStatusResult);
+      failures++;
+    } else {
+      console.log(`[PASS] Playback Status verified (Media State: ${result.playbackStatusResult.mediaState})`);
+      const allowedPlaybackFields = new Set(['mediaState', 'currentFile', 'position', 'duration', 'paused', 'volume', 'error']);
+      const actualPlaybackFields = Object.keys(result.playbackStatusResult);
+      const unexpectedPlaybackFields = actualPlaybackFields.filter((k) => !allowedPlaybackFields.has(k));
+      if (unexpectedPlaybackFields.length > 0) {
+        console.error(`[FAIL] Unexpected property in playbackStatusResult: ${unexpectedPlaybackFields.join(', ')}`);
+        failures++;
+      } else {
+        console.log('[PASS] Payload field whitelist verified for playbackStatusResult');
+      }
+
+      const serializedPlayback = JSON.stringify(result.playbackStatusResult);
+      if (/0x[0-9a-fA-F]{6,}/.test(serializedPlayback)) {
+        console.error('[FAIL] Pointer leak detected in playback status payload:', serializedPlayback);
+        failures++;
+      } else {
+        console.log('[PASS] Memory address leak check passed for playbackStatusResult');
+      }
+    }
+
     if (failures > 0) {
       console.error(`[FAIL] Verification finished with ${failures} failure(s)`);
       process.exit(1);
     }
 
-    console.log('\n>>> ALL PHASE 4 SHELL, NATIVE PLAYER LIFECYCLE & SECURITY CHECKS PASSED <<<\n');
+    console.log('\n>>> ALL PHASE 5 SHELL, NATIVE PLAYBACK ENGINE & SECURITY CHECKS PASSED <<<\n');
     process.exit(0);
   } catch (err) {
     console.error('[FAIL] Failed to parse verification payload:', err);

@@ -63,6 +63,91 @@ export interface NosvedAPI {
     };
     error?: string;
   }>;
+  openFileDialog: () => Promise<{
+    canceled: boolean;
+    filePath?: string;
+    status: {
+      mediaState: string;
+      currentFile: string | null;
+      position: number | null;
+      duration: number | null;
+      paused: boolean;
+      volume: number;
+      error?: string;
+    };
+  }>;
+  loadFile: (filePath: string) => Promise<{
+    mediaState: string;
+    currentFile: string | null;
+    position: number | null;
+    duration: number | null;
+    paused: boolean;
+    volume: number;
+    error?: string;
+  }>;
+  play: () => Promise<{
+    mediaState: string;
+    currentFile: string | null;
+    position: number | null;
+    duration: number | null;
+    paused: boolean;
+    volume: number;
+    error?: string;
+  }>;
+  pause: () => Promise<{
+    mediaState: string;
+    currentFile: string | null;
+    position: number | null;
+    duration: number | null;
+    paused: boolean;
+    volume: number;
+    error?: string;
+  }>;
+  togglePause: () => Promise<{
+    mediaState: string;
+    currentFile: string | null;
+    position: number | null;
+    duration: number | null;
+    paused: boolean;
+    volume: number;
+    error?: string;
+  }>;
+  seek: (positionSeconds: number) => Promise<{
+    mediaState: string;
+    currentFile: string | null;
+    position: number | null;
+    duration: number | null;
+    paused: boolean;
+    volume: number;
+    error?: string;
+  }>;
+  setVolume: (volumePercent: number) => Promise<{
+    mediaState: string;
+    currentFile: string | null;
+    position: number | null;
+    duration: number | null;
+    paused: boolean;
+    volume: number;
+    error?: string;
+  }>;
+  getPlaybackStatus: () => Promise<{
+    mediaState: string;
+    currentFile: string | null;
+    position: number | null;
+    duration: number | null;
+    paused: boolean;
+    volume: number;
+    error?: string;
+  }>;
+  onPlaybackStatus: (callback: (status: {
+    mediaState: string;
+    currentFile: string | null;
+    position: number | null;
+    duration: number | null;
+    paused: boolean;
+    volume: number;
+    error?: string;
+  }) => void) => void;
 }
 
 const api: NosvedAPI = {
@@ -73,6 +158,19 @@ const api: NosvedAPI = {
   initializePlayer: () => ipcRenderer.invoke('player:initialize'),
   getPlayerStatus: () => ipcRenderer.invoke('player:get-status'),
   shutdownPlayer: () => ipcRenderer.invoke('player:shutdown'),
+  openFileDialog: () => ipcRenderer.invoke('player:open-file-dialog'),
+  loadFile: (filePath: string) => ipcRenderer.invoke('player:load-file', filePath),
+  play: () => ipcRenderer.invoke('player:play'),
+  pause: () => ipcRenderer.invoke('player:pause'),
+  togglePause: () => ipcRenderer.invoke('player:toggle-pause'),
+  seek: (positionSeconds: number) => ipcRenderer.invoke('player:seek', positionSeconds),
+  setVolume: (volumePercent: number) => ipcRenderer.invoke('player:set-volume', volumePercent),
+  getPlaybackStatus: () => ipcRenderer.invoke('player:get-playback-status'),
+  onPlaybackStatus: (callback) => {
+    ipcRenderer.on('player:playback-status-update', (_event: Electron.IpcRendererEvent, status: unknown) => {
+      callback(status as Parameters<typeof callback>[0]);
+    });
+  },
 };
 
 contextBridge.exposeInMainWorld('nosvedAPI', api);
