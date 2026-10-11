@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain, session } from 'electron';
 import path from 'node:path';
+import { runMpvProofOfConcept } from './native/mpv-bindings';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (process.platform === 'win32') {
@@ -91,10 +92,19 @@ function createWindow(): void {
         // Wait briefly for React to mount
         const testResult = await mainWindow?.webContents.executeJavaScript(`
           new Promise((resolve) => {
-            const check = () => {
+            const check = async () => {
               const root = document.getElementById('root');
               const brand = document.querySelector('.brand-title');
               if (root && root.children.length > 0 && brand) {
+                let nativeMpvResult = null;
+                try {
+                  if (typeof window.nosvedAPI?.testNativeMpv === 'function') {
+                    nativeMpvResult = await window.nosvedAPI.testNativeMpv();
+                  }
+                } catch (e) {
+                  nativeMpvResult = { success: false, error: String(e) };
+                }
+
                 resolve({
                   hasNosvedAPI: typeof window.nosvedAPI !== 'undefined',
                   hasProcess: typeof window.process !== 'undefined',
@@ -102,7 +112,8 @@ function createWindow(): void {
                   hasBuffer: typeof window.Buffer !== 'undefined',
                   rootChildCount: root.children.length,
                   brandTitle: brand.textContent,
-                  isIsolated: typeof window.nosvedAPI?.getSecurityState === 'function'
+                  isIsolated: typeof window.nosvedAPI?.getSecurityState === 'function',
+                  nativeMpvResult
                 });
               } else {
                 setTimeout(check, 50);
@@ -165,6 +176,13 @@ function registerIpcHandlers(): void {
       status: 'pong',
       timestamp: Date.now(),
     };
+  });
+
+  ipcMain.handle('app:test-native-mpv', async (event) => {
+    if (!validateIpcSender(event)) {
+      throw new Error('Unauthorized IPC invocation: Sender validation failed');
+    }
+    return runMpvProofOfConcept();
   });
 }
 

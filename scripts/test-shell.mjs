@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
 
@@ -11,7 +11,19 @@ const electronBinary = path.join(
   'electron.exe'
 );
 
-console.log('--- Phase 1 Verification: Electron Shell Security & UI Check ---');
+console.log('=== Phase 3 Verification: libmpv Integration & Shell Security ===');
+
+// 0. Run Mocked Native Unit Tests
+console.log('[INFO] Running Mocked Native Unit Tests...');
+const unitResult = spawnSync(process.execPath, [path.join(rootDir, 'scripts', 'test-native-unit.mjs')], {
+  cwd: rootDir,
+  stdio: 'inherit',
+});
+if (unitResult.status !== 0) {
+  console.error('[FAIL] Native unit test suite failed!');
+  process.exit(1);
+}
+console.log('[PASS] Native unit test suite passed successfully.\n');
 
 // 1. Verify windows/x64 native assets
 const requiredNativeAssets = [
@@ -131,12 +143,25 @@ child.on('close', (code) => {
       console.log('[PASS] Context isolation contract verified');
     }
 
+    if (!result.nativeMpvResult || !result.nativeMpvResult.success) {
+      console.error('[FAIL] Native libmpv IPC proof of concept failed:', result.nativeMpvResult);
+      failures++;
+    } else {
+      console.log(`[PASS] Native libmpv IPC PoC verified (API Version: ${result.nativeMpvResult.apiVersion?.formatted})`);
+      if (result.nativeMpvResult.rawPointerLeakCheck === false) {
+        console.error('[FAIL] Raw native pointers or internal handles detected in payload');
+        failures++;
+      } else {
+        console.log('[PASS] Raw native pointer leakage check passed: main-to-renderer barrier intact');
+      }
+    }
+
     if (failures > 0) {
       console.error(`[FAIL] Verification finished with ${failures} failure(s)`);
       process.exit(1);
     }
 
-    console.log('\n>>> ALL PHASE 1 SHELL & SECURITY VERIFICATION CHECKS PASSED <<<\n');
+    console.log('\n>>> ALL PHASE 3 SHELL, NATIVE LIBMPV & SECURITY CHECKS PASSED <<<\n');
     process.exit(0);
   } catch (err) {
     console.error('[FAIL] Failed to parse verification payload:', err);

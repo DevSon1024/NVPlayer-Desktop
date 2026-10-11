@@ -15,6 +15,18 @@ export interface NosvedAPI {
     status: string;
     timestamp: number;
   }>;
+  testNativeMpv: () => Promise<{
+    success: boolean;
+    stage: string;
+    apiVersion?: {
+      raw: number;
+      major: number;
+      minor: number;
+      formatted: string;
+    };
+    error?: string;
+    errorCode?: number;
+  }>;
 }
 
 declare global {

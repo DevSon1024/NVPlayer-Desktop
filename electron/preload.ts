@@ -21,12 +21,25 @@ export interface NosvedAPI {
     status: string;
     timestamp: number;
   }>;
+  testNativeMpv: () => Promise<{
+    success: boolean;
+    stage: string;
+    apiVersion?: {
+      raw: number;
+      major: number;
+      minor: number;
+      formatted: string;
+    };
+    error?: string;
+    errorCode?: number;
+  }>;
 }
 
 const api: NosvedAPI = {
   getAppInfo: () => ipcRenderer.invoke('app:get-info'),
   getSecurityState: () => ipcRenderer.invoke('app:get-security-state'),
   ping: () => ipcRenderer.invoke('app:ping'),
+  testNativeMpv: () => ipcRenderer.invoke('app:test-native-mpv'),
 };
 
 contextBridge.exposeInMainWorld('nosvedAPI', api);

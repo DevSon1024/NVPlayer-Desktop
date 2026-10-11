@@ -12,6 +12,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "koffi": "^3.3.3",
     "lucide-react": "^1.55.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"

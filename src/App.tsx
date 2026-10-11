@@ -29,6 +29,7 @@ interface SecurityState {
 export const App: React.FC = () => {
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
   const [securityState, setSecurityState] = useState<SecurityState | null>(null);
+  const [nativePoc, setNativePoc] = useState<{ success: boolean; stage: string; apiVersion?: { formatted: string } } | null>(null);
   const [activeTab, setActiveTab] = useState<'player' | 'library' | 'playlists' | 'recent' | 'settings'>('player');
 
   // Verify in-renderer isolation
@@ -41,6 +42,7 @@ export const App: React.FC = () => {
     if (window.nosvedAPI) {
       window.nosvedAPI.getAppInfo().then(setAppInfo).catch(console.error);
       window.nosvedAPI.getSecurityState().then(setSecurityState).catch(console.error);
+      window.nosvedAPI.testNativeMpv().then(setNativePoc).catch(console.error);
     }
   }, []);
 
@@ -204,8 +206,16 @@ export const App: React.FC = () => {
                   <span className="row-value">include/mpv (client.h, render.h)</span>
                 </div>
                 <div className="card-row">
-                  <span className="row-label">Integrity Status</span>
-                  <span className="row-status-verified">Preserved &amp; Intact</span>
+                  <span className="row-label">libmpv API</span>
+                  <span className="row-value">
+                    {nativePoc?.apiVersion?.formatted ? `v${nativePoc.apiVersion.formatted} Connected` : 'Probing...'}
+                  </span>
+                </div>
+                <div className="card-row">
+                  <span className="row-label">Lifecycle PoC</span>
+                  <span className="row-status-verified">
+                    {nativePoc?.success ? 'Verified (Create -> Init -> Teardown)' : 'Pending'}
+                  </span>
                 </div>
               </div>
             </div>
