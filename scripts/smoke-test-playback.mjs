@@ -1,5 +1,6 @@
 import path from 'node:path';
 import fs from 'node:fs';
+import assert from 'node:assert';
 import { execSync } from 'node:child_process';
 import koffi from 'koffi';
 
@@ -162,7 +163,7 @@ try {
     console.warn('[WARN] Seek position update was not confirmed immediately');
   }
 
-  // 8. Test Volume
+  // 8. Test Volume & Mute
   console.log('[EXEC] Setting volume to 65%...');
   const volCode = mpv_set_property_string(ctx, 'volume', '65');
   if (volCode < 0) {
@@ -171,11 +172,30 @@ try {
   const readVol = mpv_get_property_string(ctx, 'volume');
   console.log(`[PASS] Volume confirmed from native: ${parseFloat(readVol || '0').toFixed(0)}%`);
 
-  // 9. Pause
+  console.log('[EXEC] Testing native mute property synchronization...');
+  mpv_set_property_string(ctx, 'mute', 'yes');
+  const readMuteYes = mpv_get_property_string(ctx, 'mute');
+  assert.strictEqual(readMuteYes, 'yes', 'Native mute state should be yes');
+  const readVolWhileMuted = mpv_get_property_string(ctx, 'volume');
+  assert.strictEqual(parseFloat(readVolWhileMuted || '0').toFixed(0), '65', 'Volume level must remain preserved while muted');
+  console.log('[PASS] Native mute property confirmed: yes (volume level 65% preserved)');
+
+  mpv_set_property_string(ctx, 'mute', 'no');
+  const readMuteNo = mpv_get_property_string(ctx, 'mute');
+  assert.strictEqual(readMuteNo, 'no', 'Native mute state should be restored to no');
+  console.log('[PASS] Native unmute verified');
+
+  // 9. Pause & Replay
   console.log('[EXEC] Pausing playback...');
   mpv_set_property_string(ctx, 'pause', 'yes');
   const readPause = mpv_get_property_string(ctx, 'pause');
   console.log(`[PASS] Pause state confirmed: ${readPause}`);
+
+  console.log('[EXEC] Testing replay rewind command to 0.0s...');
+  mpv_command(ctx, ['seek', '0', 'absolute', null]);
+  mpv_set_property_string(ctx, 'pause', 'no');
+  const rewoundPosStr = mpv_get_property_string(ctx, 'time-pos');
+  console.log(`[PASS] Replay seek confirmed from native: ${rewoundPosStr}s`);
 
   // 10. Clean shutdown
   console.log('[EXEC] Performing clean termination and destroy...');

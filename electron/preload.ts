@@ -11,6 +11,7 @@ export interface PlaybackStatusPayload {
   duration: number | null;
   paused: boolean;
   volume: number;
+  muted: boolean;
   videoWidth?: number | null;
   videoHeight?: number | null;
   error?: string;
@@ -86,6 +87,8 @@ export interface NosvedAPI {
   togglePause: () => Promise<PlaybackStatusPayload>;
   seek: (positionSeconds: number) => Promise<PlaybackStatusPayload>;
   setVolume: (volumePercent: number) => Promise<PlaybackStatusPayload>;
+  setMuted: (muted: boolean) => Promise<PlaybackStatusPayload>;
+  toggleMute: () => Promise<PlaybackStatusPayload>;
   setVideoBounds: (bounds: { x: number; y: number; width: number; height: number; visible?: boolean }) => Promise<{ success: boolean }>;
   getPlaybackStatus: () => Promise<PlaybackStatusPayload>;
   onPlaybackStatus: (callback: (status: PlaybackStatusPayload) => void) => void;
@@ -106,6 +109,8 @@ const api: NosvedAPI = {
   togglePause: () => ipcRenderer.invoke('player:toggle-pause'),
   seek: (positionSeconds: number) => ipcRenderer.invoke('player:seek', positionSeconds),
   setVolume: (volumePercent: number) => ipcRenderer.invoke('player:set-volume', volumePercent),
+  setMuted: (muted: boolean) => ipcRenderer.invoke('player:set-muted', muted),
+  toggleMute: () => ipcRenderer.invoke('player:toggle-mute'),
   setVideoBounds: (bounds) => ipcRenderer.invoke('player:set-video-bounds', bounds),
   getPlaybackStatus: () => ipcRenderer.invoke('player:get-playback-status'),
   onPlaybackStatus: (callback) => {

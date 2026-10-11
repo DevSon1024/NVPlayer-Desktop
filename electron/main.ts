@@ -86,7 +86,7 @@ function createWindow(): void {
 
   mainWindow.on('restore', () => {
     const status = playerService.getPlaybackStatus();
-    videoWindow.setVisible(Boolean(status.currentFile && status.mediaState !== 'idle'));
+    videoWindow.setVisible(Boolean(status.currentFile && status.mediaState !== 'idle' && status.mediaState !== 'error'));
   });
 
   // Gracefully show window only once it has rendered initial frame
@@ -398,6 +398,23 @@ function registerIpcHandlers(): void {
       throw new Error('Invalid argument: Volume must be a finite number');
     }
     return playerService.setVolume(volumePercent);
+  });
+
+  ipcMain.handle('player:set-muted', async (event, muted: unknown) => {
+    if (!validateIpcSender(event)) {
+      throw new Error('Unauthorized IPC invocation: Sender validation failed');
+    }
+    if (typeof muted !== 'boolean') {
+      throw new Error('Invalid argument: Muted must be a boolean');
+    }
+    return playerService.setMuted(muted);
+  });
+
+  ipcMain.handle('player:toggle-mute', async (event) => {
+    if (!validateIpcSender(event)) {
+      throw new Error('Unauthorized IPC invocation: Sender validation failed');
+    }
+    return playerService.toggleMute();
   });
 
   ipcMain.handle('player:get-playback-status', (event) => {

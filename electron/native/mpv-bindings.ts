@@ -75,9 +75,26 @@ export const MPV_FORMAT = {
   NODE: 6,
 } as const;
 
+export const MPV_END_FILE_REASON = {
+  EOF: 0,
+  STOP: 2,
+  QUIT: 3,
+  ERROR: 4,
+  REDIRECT: 5,
+} as const;
+
+export interface MpvEventEndFileDecoded {
+  reason: number;
+  error: number;
+  playlist_entry_id: bigint | number;
+  playlist_insert_id: bigint | number;
+  playlist_insert_num_entries: number;
+}
+
 let cachedFunctions: MpvFunctions | null = null;
 let cachedDllPath: string | null = null;
 let mpvEventStruct: unknown = null;
+let mpvEventEndFileStruct: unknown = null;
 let wakeupCallbackProto: unknown = null;
 
 /**
@@ -135,6 +152,16 @@ export function getMpvFunctions(customDllPath?: string): MpvFunctions {
       });
     }
 
+    if (!mpvEventEndFileStruct) {
+      mpvEventEndFileStruct = koffi.struct('mpv_event_end_file', {
+        reason: 'int',
+        error: 'int',
+        playlist_entry_id: 'int64',
+        playlist_insert_id: 'int64',
+        playlist_insert_num_entries: 'int',
+      });
+    }
+
     if (!wakeupCallbackProto) {
       wakeupCallbackProto = koffi.proto('void wakeup_cb(void *d)');
     }
@@ -172,6 +199,18 @@ export function decodeMpvEvent(evPtr: unknown): MpvEventDecoded | null {
   if (!evPtr || !mpvEventStruct) return null;
   try {
     return (koffi.decode(evPtr, mpvEventStruct) as MpvEventDecoded) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Unpacks an mpv_event_end_file payload pointer.
+ */
+export function decodeMpvEndFileEvent(dataPtr: unknown): MpvEventEndFileDecoded | null {
+  if (!dataPtr || !mpvEventEndFileStruct) return null;
+  try {
+    return (koffi.decode(dataPtr, mpvEventEndFileStruct) as MpvEventEndFileDecoded) ?? null;
   } catch {
     return null;
   }

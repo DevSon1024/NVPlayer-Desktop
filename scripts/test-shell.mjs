@@ -264,7 +264,7 @@ child.on('close', (code) => {
       failures++;
     } else {
       console.log(`[PASS] Playback Status verified (Media State: ${result.playbackStatusResult.mediaState})`);
-      const allowedPlaybackFields = new Set(['mediaState', 'currentFile', 'position', 'duration', 'paused', 'volume', 'videoWidth', 'videoHeight', 'error']);
+      const allowedPlaybackFields = new Set(['mediaState', 'currentFile', 'position', 'duration', 'paused', 'volume', 'muted', 'videoWidth', 'videoHeight', 'error']);
       const actualPlaybackFields = Object.keys(result.playbackStatusResult);
       const unexpectedPlaybackFields = actualPlaybackFields.filter((k) => !allowedPlaybackFields.has(k));
       if (unexpectedPlaybackFields.length > 0) {
@@ -296,7 +296,7 @@ child.on('close', (code) => {
       process.exit(1);
     }
 
-    console.log('\n>>> ALL PHASE 6 SHELL, NATIVE VIDEO RENDERING & SECURITY CHECKS PASSED <<<\n');
+    console.log('\n>>> ALL PHASE 7 SHELL, PLAYBACK & CONTROLS SECURITY CHECKS PASSED <<<\n');
     process.exit(0);
   } catch (err) {
     console.error('[FAIL] Failed to parse verification payload:', err);

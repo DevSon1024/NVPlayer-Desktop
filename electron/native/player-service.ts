@@ -4,7 +4,9 @@ import {
   getMpvFunctions,
   MpvFunctions,
   MPV_EVENT,
+  MPV_END_FILE_REASON,
   decodeMpvEvent,
+  decodeMpvEndFileEvent,
   safeGetMpvPropertyString,
 } from './mpv-bindings';
 
@@ -42,6 +44,7 @@ export interface PlaybackStatus {
   duration: number | null;
   paused: boolean;
   volume: number;
+  muted: boolean;
   videoWidth?: number | null;
   videoHeight?: number | null;
   error?: string;
@@ -89,6 +92,7 @@ export class NativePlayerService {
     duration: null,
     paused: true,
     volume: 100,
+    muted: false,
     videoWidth: null,
     videoHeight: null,
   };
@@ -234,6 +238,7 @@ export class NativePlayerService {
         this.funcs.mpv_observe_property(allocatedHandle, 5, 'eof-reached', 0);
         this.funcs.mpv_observe_property(allocatedHandle, 6, 'dwidth', 0);
         this.funcs.mpv_observe_property(allocatedHandle, 7, 'dheight', 0);
+        this.funcs.mpv_observe_property(allocatedHandle, 8, 'mute', 0);
 
         this.handle = allocatedHandle;
         this.state = 'initialized';
@@ -316,12 +321,26 @@ export class NativePlayerService {
           this.notifyPlaybackChange();
           break;
 
-        case MPV_EVENT.END_FILE:
-          this.playbackStatus.mediaState = 'ended';
-          this.playbackStatus.position = this.playbackStatus.duration;
+        case MPV_EVENT.END_FILE: {
+          const endData = decodeMpvEndFileEvent(ev.data);
+          const reason = endData?.reason ?? MPV_END_FILE_REASON.EOF;
+          if (reason === MPV_END_FILE_REASON.ERROR) {
+            const errCode = endData?.error ?? -1;
+            const errStr = this.funcs?.mpv_error_string(errCode) || 'unsupported or corrupt media file';
+            this.playbackStatus.mediaState = 'error';
+            this.playbackStatus.error = `Playback error: ${errStr} (code ${errCode})`;
+          } else if (reason === MPV_END_FILE_REASON.EOF) {
+            this.playbackStatus.mediaState = 'ended';
+            this.playbackStatus.position = this.playbackStatus.duration;
+          } else if (reason === MPV_END_FILE_REASON.STOP || reason === MPV_END_FILE_REASON.REDIRECT) {
+            if (this.playbackStatus.mediaState !== 'loading') {
+              this.playbackStatus.mediaState = 'idle';
+            }
+          }
           this.updatePositionPolling();
           this.notifyPlaybackChange();
           break;
+        }
 
         case MPV_EVENT.PLAYBACK_RESTART:
         case MPV_EVENT.PROPERTY_CHANGE:
@@ -393,6 +412,11 @@ export class NativePlayerService {
     if (dheightStr !== null) {
       const h = parseInt(dheightStr, 10);
       this.playbackStatus.videoHeight = Number.isFinite(h) && h > 0 ? h : null;
+    }
+
+    const muteStr = safeGetMpvPropertyString(this.funcs, this.handle, 'mute');
+    if (muteStr !== null) {
+      this.playbackStatus.muted = muteStr === 'yes';
     }
     console.log('[refreshStateFromNative] done refreshing!');
   }
@@ -470,15 +494,26 @@ export class NativePlayerService {
     if (!this.handle || !this.funcs) {
       throw new Error('Cannot play: Native player instance is not initialized');
     }
+    if (!this.playbackStatus.currentFile || this.playbackStatus.mediaState === 'idle') {
+      throw new Error('Cannot play: No media file loaded');
+    }
+    if (this.playbackStatus.mediaState === 'loading') {
+      throw new Error('Cannot play: Media is currently loading');
+    }
+
+    // Rewind to beginning if playing from ended state
+    if (this.playbackStatus.mediaState === 'ended') {
+      this.funcs.mpv_command(this.handle, ['seek', '0', 'absolute', null]);
+      this.playbackStatus.position = 0;
+    }
+
     const code = this.funcs.mpv_set_property_string(this.handle, 'pause', 'no');
     if (code < 0) {
       const errStr = this.funcs.mpv_error_string(code);
       throw new Error(`Failed to play media: ${errStr}`);
     }
     this.playbackStatus.paused = false;
-    if (this.playbackStatus.mediaState === 'paused') {
-      this.playbackStatus.mediaState = 'playing';
-    }
+    this.playbackStatus.mediaState = 'playing';
     this.updatePositionPolling();
     this.notifyPlaybackChange();
     return this.getPlaybackStatus();
@@ -488,6 +523,13 @@ export class NativePlayerService {
     if (!this.handle || !this.funcs) {
       throw new Error('Cannot pause: Native player instance is not initialized');
     }
+    if (!this.playbackStatus.currentFile || this.playbackStatus.mediaState === 'idle') {
+      throw new Error('Cannot pause: No media file loaded');
+    }
+    if (this.playbackStatus.mediaState === 'loading') {
+      throw new Error('Cannot pause: Media is currently loading');
+    }
+
     const code = this.funcs.mpv_set_property_string(this.handle, 'pause', 'yes');
     if (code < 0) {
       const errStr = this.funcs.mpv_error_string(code);
@@ -503,7 +545,7 @@ export class NativePlayerService {
   }
 
   public async togglePause(): Promise<PlaybackStatus> {
-    if (this.playbackStatus.paused) {
+    if (this.playbackStatus.paused || this.playbackStatus.mediaState === 'ended') {
       return this.play();
     }
     return this.pause();
@@ -516,12 +558,18 @@ export class NativePlayerService {
     if (positionSeconds < 0) {
       throw new Error('Invalid seek position: Cannot seek to a negative timestamp');
     }
-    if (this.playbackStatus.duration !== null && positionSeconds > this.playbackStatus.duration) {
-      positionSeconds = this.playbackStatus.duration;
-    }
-
     if (!this.handle || !this.funcs) {
       throw new Error('Cannot seek: Native player instance is not initialized');
+    }
+    if (!this.playbackStatus.currentFile || this.playbackStatus.mediaState === 'idle') {
+      throw new Error('Cannot seek: No media file loaded');
+    }
+    if (this.playbackStatus.mediaState === 'loading') {
+      throw new Error('Cannot seek: Media is currently loading');
+    }
+
+    if (this.playbackStatus.duration !== null && positionSeconds > this.playbackStatus.duration) {
+      positionSeconds = this.playbackStatus.duration;
     }
 
     const code = this.funcs.mpv_command(this.handle, ['seek', String(positionSeconds), 'absolute', null]);
@@ -531,6 +579,9 @@ export class NativePlayerService {
     }
 
     this.playbackStatus.position = positionSeconds;
+    if (this.playbackStatus.mediaState === 'ended' && positionSeconds < (this.playbackStatus.duration ?? positionSeconds)) {
+      this.playbackStatus.mediaState = this.playbackStatus.paused ? 'paused' : 'playing';
+    }
     this.notifyPlaybackChange();
     return this.getPlaybackStatus();
   }
@@ -555,8 +606,36 @@ export class NativePlayerService {
     }
 
     this.playbackStatus.volume = target;
+    if (this.playbackStatus.muted && target > 0) {
+      try {
+        this.funcs.mpv_set_property_string(this.handle, 'mute', 'no');
+        this.playbackStatus.muted = false;
+      } catch {
+        // Fallback
+      }
+    }
     this.notifyPlaybackChange();
     return this.getPlaybackStatus();
+  }
+
+  public async setMuted(muted: boolean): Promise<PlaybackStatus> {
+    if (!this.handle || !this.funcs) {
+      throw new Error('Cannot set mute: Native player instance is not initialized');
+    }
+
+    const code = this.funcs.mpv_set_property_string(this.handle, 'mute', muted ? 'yes' : 'no');
+    if (code < 0) {
+      const errStr = this.funcs.mpv_error_string(code);
+      throw new Error(`Failed to set mute: ${errStr}`);
+    }
+
+    this.playbackStatus.muted = muted;
+    this.notifyPlaybackChange();
+    return this.getPlaybackStatus();
+  }
+
+  public async toggleMute(): Promise<PlaybackStatus> {
+    return this.setMuted(!this.playbackStatus.muted);
   }
 
   // --- Shutdown ---
@@ -625,6 +704,7 @@ export class NativePlayerService {
           duration: null,
           paused: true,
           volume: 100,
+          muted: false,
           videoWidth: null,
           videoHeight: null,
         };

@@ -15,6 +15,8 @@ import {
   Volume2,
   VolumeX,
   AlertCircle,
+  RotateCcw,
+  X,
 } from 'lucide-react';
 import type { PlaybackStatus } from './types/electron';
 
@@ -32,10 +34,18 @@ interface SecurityState {
   sandboxEnabled: boolean;
 }
 
-function formatTime(seconds: number | null): string {
-  if (seconds === null || isNaN(seconds) || seconds < 0) return '--:--';
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.floor(seconds % 60);
+function formatTime(seconds: number | null | undefined): string {
+  if (seconds === null || seconds === undefined || !Number.isFinite(seconds) || seconds < 0) {
+    return '--:--';
+  }
+  const totalSecs = Math.floor(seconds);
+  const hrs = Math.floor(totalSecs / 3600);
+  const mins = Math.floor((totalSecs % 3600) / 60);
+  const secs = totalSecs % 60;
+
+  if (hrs > 0) {
+    return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  }
   return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 }
 
@@ -51,17 +61,28 @@ export const App: React.FC = () => {
     duration: null,
     paused: true,
     volume: 100,
+    muted: false,
     videoWidth: null,
     videoHeight: null,
   });
   const [activeTab, setActiveTab] = useState<'player' | 'library' | 'playlists' | 'recent' | 'settings'>('player');
+
+  // Scrubbing & seeking state to avoid flooding IPC during slider drag
+  const [isScrubbing, setIsScrubbing] = useState(false);
+  const [scrubPosition, setScrubPosition] = useState<number | null>(null);
+  const isCommandInFlightRef = useRef(false);
 
   const videoViewportRef = useRef<HTMLDivElement>(null);
 
   // Synchronize video viewport dimensions with the native child window
   const updateVideoBounds = useCallback(() => {
     if (!videoViewportRef.current || !window.nosvedAPI?.setVideoBounds) return;
-    const isVisible = Boolean(playbackStatus.currentFile && playbackStatus.mediaState !== 'idle');
+    const isVisible = Boolean(
+      playbackStatus.currentFile &&
+      playbackStatus.mediaState !== 'idle' &&
+      playbackStatus.mediaState !== 'error' &&
+      activeTab === 'player'
+    );
     const rect = videoViewportRef.current.getBoundingClientRect();
     window.nosvedAPI
       .setVideoBounds({
@@ -72,7 +93,7 @@ export const App: React.FC = () => {
         visible: isVisible,
       })
       .catch(console.error);
-  }, [playbackStatus.currentFile, playbackStatus.mediaState]);
+  }, [playbackStatus.currentFile, playbackStatus.mediaState, activeTab]);
 
   useEffect(() => {
     updateVideoBounds();
@@ -128,8 +149,12 @@ export const App: React.FC = () => {
   const notifyBrowserBridgeMissing = () => {
     setPlaybackStatus((prev) => ({
       ...prev,
-      error: 'Desktop Bridge Unavailable: Native libmpv commands require the Electron application window. Regular browsers cannot access native C-ABI binaries.',
+      error: 'Desktop Bridge Unavailable: Native libmpv commands require the Electron desktop application window. Regular browsers cannot access native C-ABI binaries.',
     }));
+  };
+
+  const handleDismissError = () => {
+    setPlaybackStatus((prev) => ({ ...prev, error: undefined }));
   };
 
   const handleOpenFile = async () => {
@@ -137,6 +162,8 @@ export const App: React.FC = () => {
       notifyBrowserBridgeMissing();
       return;
     }
+    if (isCommandInFlightRef.current) return;
+    isCommandInFlightRef.current = true;
     try {
       const res = await window.nosvedAPI.openFileDialog();
       if (!res.canceled) {
@@ -144,34 +171,58 @@ export const App: React.FC = () => {
       }
     } catch (err) {
       console.error('Failed to open file dialog:', err);
+      setPlaybackStatus((prev) => ({
+        ...prev,
+        error: err instanceof Error ? err.message : 'Failed to open file dialog',
+      }));
+    } finally {
+      isCommandInFlightRef.current = false;
     }
   };
 
-  const handleTogglePlayPause = async () => {
+  const handleTogglePlayPause = useCallback(async () => {
     if (!window.nosvedAPI) {
       notifyBrowserBridgeMissing();
       return;
     }
+    if (isCommandInFlightRef.current) return;
+    isCommandInFlightRef.current = true;
     try {
       const res = await window.nosvedAPI.togglePause();
       setPlaybackStatus(res);
     } catch (err) {
       console.error('Failed to toggle play/pause:', err);
+      setPlaybackStatus((prev) => ({
+        ...prev,
+        error: err instanceof Error ? err.message : 'Play/pause command failed',
+      }));
+    } finally {
+      isCommandInFlightRef.current = false;
+    }
+  }, []);
+
+  const handleSeekSliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const pos = parseFloat(e.target.value);
+    if (Number.isFinite(pos)) {
+      setScrubPosition(pos);
     }
   };
 
-  const handleSeek = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!window.nosvedAPI) {
-      notifyBrowserBridgeMissing();
-      return;
-    }
-    const pos = parseFloat(e.target.value);
-    if (isNaN(pos)) return;
+  const handleSeekMouseDown = () => {
+    setIsScrubbing(true);
+    setScrubPosition(playbackStatus.position ?? 0);
+  };
+
+  const commitSeek = async (val?: number) => {
+    const target = typeof val === 'number' && Number.isFinite(val) ? val : scrubPosition;
+    setIsScrubbing(false);
+    setScrubPosition(null);
+    if (target === null || !Number.isFinite(target) || !window.nosvedAPI) return;
     try {
-      const res = await window.nosvedAPI.seek(pos);
+      const res = await window.nosvedAPI.seek(target);
       setPlaybackStatus(res);
     } catch (err) {
-      console.error('Failed to seek:', err);
+      console.error('Failed to commit seek:', err);
     }
   };
 
@@ -190,19 +241,75 @@ export const App: React.FC = () => {
     }
   };
 
-  const handleToggleMute = async () => {
+  const handleToggleMute = useCallback(async () => {
     if (!window.nosvedAPI) {
       notifyBrowserBridgeMissing();
       return;
     }
-    const newVol = playbackStatus.volume > 0 ? 0 : 100;
     try {
-      const res = await window.nosvedAPI.setVolume(newVol);
+      const res = await window.nosvedAPI.toggleMute();
       setPlaybackStatus(res);
     } catch (err) {
       console.error('Failed to toggle mute:', err);
     }
-  };
+  }, []);
+
+  // Keyboard accessibility listeners (Space: play/pause, Left/Right: seek +/-5s, Up/Down: vol +/-5%, M: mute, Esc: dismiss error)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.isContentEditable)
+      ) {
+        // Do not intercept keystrokes inside text inputs
+        if (target.getAttribute('type') !== 'range') {
+          return;
+        }
+      }
+
+      if (e.code === 'Space') {
+        e.preventDefault();
+        handleTogglePlayPause();
+      } else if (e.code === 'ArrowLeft') {
+        e.preventDefault();
+        if (playbackStatus.currentFile && playbackStatus.position !== null) {
+          const newPos = Math.max(0, playbackStatus.position - 5);
+          window.nosvedAPI?.seek(newPos).then(setPlaybackStatus).catch(console.error);
+        }
+      } else if (e.code === 'ArrowRight') {
+        e.preventDefault();
+        if (playbackStatus.currentFile && playbackStatus.position !== null) {
+          const max = playbackStatus.duration ?? playbackStatus.position + 5;
+          const newPos = Math.min(max, playbackStatus.position + 5);
+          window.nosvedAPI?.seek(newPos).then(setPlaybackStatus).catch(console.error);
+        }
+      } else if (e.code === 'ArrowUp') {
+        e.preventDefault();
+        const newVol = Math.min(100, Math.round(playbackStatus.volume + 5));
+        window.nosvedAPI?.setVolume(newVol).then(setPlaybackStatus).catch(console.error);
+      } else if (e.code === 'ArrowDown') {
+        e.preventDefault();
+        const newVol = Math.max(0, Math.round(playbackStatus.volume - 5));
+        window.nosvedAPI?.setVolume(newVol).then(setPlaybackStatus).catch(console.error);
+      } else if (e.key === 'm' || e.key === 'M') {
+        e.preventDefault();
+        handleToggleMute();
+      } else if (e.code === 'Escape') {
+        if (playbackStatus.error) {
+          e.preventDefault();
+          handleDismissError();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [playbackStatus, handleTogglePlayPause, handleToggleMute]);
 
   return (
     <div className="app-layout">
@@ -360,9 +467,20 @@ export const App: React.FC = () => {
                     </div>
                   )}
                   {playbackStatus.error && (
-                    <div className="player-error-banner" style={{ margin: 16 }}>
-                      <AlertCircle size={16} />
-                      <span>{playbackStatus.error}</span>
+                    <div className="player-error-banner" role="alert">
+                      <div className="error-banner-body">
+                        <AlertCircle size={16} />
+                        <span>{playbackStatus.error}</span>
+                      </div>
+                      <button
+                        type="button"
+                        className="error-dismiss-btn"
+                        onClick={handleDismissError}
+                        title="Dismiss error (Esc)"
+                        aria-label="Dismiss error"
+                      >
+                        <X size={14} />
+                      </button>
                     </div>
                   )}
                 </>
@@ -376,15 +494,27 @@ export const App: React.FC = () => {
                     Native libmpv engine initialized. Select a local video file to begin hardware-accelerated playback.
                   </p>
                   {playbackStatus.error && (
-                    <div className="player-error-banner" style={{ marginTop: 12 }}>
-                      <AlertCircle size={16} />
-                      <span>{playbackStatus.error}</span>
+                    <div className="player-error-banner" role="alert" style={{ marginTop: 12 }}>
+                      <div className="error-banner-body">
+                        <AlertCircle size={16} />
+                        <span>{playbackStatus.error}</span>
+                      </div>
+                      <button
+                        type="button"
+                        className="error-dismiss-btn"
+                        onClick={handleDismissError}
+                        title="Dismiss error (Esc)"
+                        aria-label="Dismiss error"
+                      >
+                        <X size={14} />
+                      </button>
                     </div>
                   )}
                   <button
                     type="button"
                     className="open-file-btn"
                     onClick={handleOpenFile}
+                    aria-label="Open video file from disk"
                   >
                     <FolderOpen size={18} />
                     <span>Open Video File</span>
@@ -401,22 +531,42 @@ export const App: React.FC = () => {
                   className="control-btn primary-play-btn"
                   onClick={handleTogglePlayPause}
                   disabled={!playbackStatus.currentFile || playbackStatus.mediaState === 'loading'}
-                  title={playbackStatus.paused ? 'Play' : 'Pause'}
+                  title={
+                    playbackStatus.mediaState === 'ended'
+                      ? 'Replay (Space)'
+                      : playbackStatus.paused
+                      ? 'Play (Space)'
+                      : 'Pause (Space)'
+                  }
+                  aria-label={
+                    playbackStatus.mediaState === 'ended'
+                      ? 'Replay'
+                      : playbackStatus.paused
+                      ? 'Play'
+                      : 'Pause'
+                  }
                 >
-                  {playbackStatus.paused ? <Play size={18} /> : <Pause size={18} />}
+                  {playbackStatus.mediaState === 'ended' ? (
+                    <RotateCcw size={18} />
+                  ) : playbackStatus.paused ? (
+                    <Play size={18} />
+                  ) : (
+                    <Pause size={18} />
+                  )}
                 </button>
 
                 <button
                   type="button"
                   className="control-btn"
                   onClick={handleOpenFile}
-                  title="Open Video File"
+                  title="Open Video File (Ctrl+O)"
+                  aria-label="Open Video File"
                 >
                   <FolderOpen size={16} />
                 </button>
 
-                <div className="time-display">
-                  <span>{formatTime(playbackStatus.position)}</span>
+                <div className="time-display" aria-live="off">
+                  <span>{formatTime(isScrubbing && scrubPosition !== null ? scrubPosition : playbackStatus.position)}</span>
                   <span className="time-sep">/</span>
                   <span>{formatTime(playbackStatus.duration)}</span>
                 </div>
@@ -429,10 +579,20 @@ export const App: React.FC = () => {
                   min={0}
                   max={playbackStatus.duration && playbackStatus.duration > 0 ? playbackStatus.duration : 100}
                   step={0.1}
-                  value={playbackStatus.position ?? 0}
-                  onChange={handleSeek}
-                  disabled={!playbackStatus.currentFile || !playbackStatus.duration}
-                  title="Seek position"
+                  value={isScrubbing && scrubPosition !== null ? scrubPosition : (playbackStatus.position ?? 0)}
+                  onChange={handleSeekSliderChange}
+                  onMouseDown={handleSeekMouseDown}
+                  onMouseUp={() => commitSeek()}
+                  onTouchStart={handleSeekMouseDown}
+                  onTouchEnd={() => commitSeek()}
+                  onKeyUp={(e) => {
+                    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+                      commitSeek(parseFloat((e.target as HTMLInputElement).value));
+                    }
+                  }}
+                  disabled={!playbackStatus.currentFile || !playbackStatus.duration || playbackStatus.mediaState === 'loading'}
+                  title="Seek timeline (Left/Right Arrow)"
+                  aria-label="Seek timeline"
                 />
               </div>
 
@@ -441,9 +601,10 @@ export const App: React.FC = () => {
                   type="button"
                   className="control-btn"
                   onClick={handleToggleMute}
-                  title={playbackStatus.volume === 0 ? 'Unmute' : 'Mute'}
+                  title={playbackStatus.muted || playbackStatus.volume === 0 ? 'Unmute (M)' : 'Mute (M)'}
+                  aria-label={playbackStatus.muted || playbackStatus.volume === 0 ? 'Unmute' : 'Mute'}
                 >
-                  {playbackStatus.volume === 0 ? <VolumeX size={16} /> : <Volume2 size={16} />}
+                  {playbackStatus.muted || playbackStatus.volume === 0 ? <VolumeX size={16} /> : <Volume2 size={16} />}
                 </button>
 
                 <input
@@ -452,13 +613,14 @@ export const App: React.FC = () => {
                   min={0}
                   max={100}
                   step={1}
-                  value={playbackStatus.volume}
+                  value={playbackStatus.muted ? 0 : playbackStatus.volume}
                   onChange={handleVolume}
-                  title={`Volume: ${Math.round(playbackStatus.volume)}%`}
+                  title={`Volume: ${playbackStatus.muted ? 0 : Math.round(playbackStatus.volume)}% (Up/Down Arrow)`}
+                  aria-label="Volume slider"
                 />
 
                 <span className="volume-label">
-                  {Math.round(playbackStatus.volume)}%
+                  {playbackStatus.muted ? '0%' : `${Math.round(playbackStatus.volume)}%`}
                 </span>
 
                 {playbackStatus.currentFile && (
