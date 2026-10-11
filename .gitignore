@@ -1,0 +1,31 @@
+# Dependencies
+node_modules/
+
+# Production and intermediate build outputs
+dist/
+dist-electron/
+out/
+build/
+.vite/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Environment and IDE files
+.env
+.env.local
+.env.*.local
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+
+# OS metadata
+Thumbs.db
+[Dd]esktop.ini
+.DS_Store
+
