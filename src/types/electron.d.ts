@@ -1,3 +1,31 @@
+export interface PlaybackStatus {
+  mediaState: 'idle' | 'loading' | 'playing' | 'paused' | 'ended' | 'error' | string;
+  currentFile: string | null;
+  position: number | null;
+  duration: number | null;
+  paused: boolean;
+  volume: number;
+  muted: boolean;
+  videoWidth?: number | null;
+  videoHeight?: number | null;
+  error?: string;
+}
+
+export interface MediaItem {
+  id: string;
+  filePath: string;
+  fileName: string;
+  duration: number | null;
+  fileSize: number | null;
+  lastModified: number | null;
+  firstAdded: number;
+  lastOpened: number;
+  lastPosition: number | null;
+  videoWidth?: number | null;
+  videoHeight?: number | null;
+  isMissing?: boolean;
+}
+
 export interface NosvedAPI {
   getAppInfo: () => Promise<{
     name: string;
@@ -72,20 +100,23 @@ export interface NosvedAPI {
   toggleMute: () => Promise<PlaybackStatus>;
   setVideoBounds: (bounds: { x: number; y: number; width: number; height: number; visible?: boolean }) => Promise<{ success: boolean }>;
   getPlaybackStatus: () => Promise<PlaybackStatus>;
-  onPlaybackStatus: (callback: (status: PlaybackStatus) => void) => void;
-}
+  onPlaybackStatus: (callback: (status: PlaybackStatus) => void) => () => void;
 
-export interface PlaybackStatus {
-  mediaState: 'idle' | 'loading' | 'playing' | 'paused' | 'ended' | 'error' | string;
-  currentFile: string | null;
-  position: number | null;
-  duration: number | null;
-  paused: boolean;
-  volume: number;
-  muted: boolean;
-  videoWidth?: number | null;
-  videoHeight?: number | null;
-  error?: string;
+  // Fullscreen APIs (Phase 8)
+  toggleFullscreen: () => Promise<boolean>;
+  setFullscreen: (fullscreen: boolean) => Promise<boolean>;
+  isFullscreen: () => Promise<boolean>;
+  onFullscreenChange: (callback: (fullscreen: boolean) => void) => () => void;
+  onUserActive: (callback: () => void) => () => void;
+  onWindowRestored: (callback: () => void) => () => void;
+  onVideoDoubleClicked: (callback: () => void) => () => void;
+
+  // Media Library & Persistence APIs (Phase 8)
+  getLibrary: () => Promise<MediaItem[]>;
+  getRecent: (limit?: number) => Promise<MediaItem[]>;
+  importMediaFiles: () => Promise<{ canceled: boolean; importedCount: number }>;
+  removeMedia: (id: string) => Promise<boolean>;
+  updatePlaybackPosition: (filePath: string, position: number, duration?: number | null) => Promise<boolean>;
 }
 
 declare global {

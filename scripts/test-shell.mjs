@@ -47,6 +47,28 @@ if (renderingResult.status !== 0) {
 }
 console.log('[PASS] Rendering unit test suite passed successfully.\n');
 
+console.log('[INFO] Running Phase 8 Media Database & Persistence Unit Tests...');
+const databaseResult = spawnSync(process.execPath, [path.join(rootDir, 'scripts', 'test-database-unit.mjs')], {
+  cwd: rootDir,
+  stdio: 'inherit',
+});
+if (databaseResult.status !== 0) {
+  console.error('[FAIL] Media database unit test suite failed!');
+  process.exit(1);
+}
+console.log('[PASS] Media database unit test suite passed successfully.\n');
+
+console.log('[INFO] Running Phase 8 Fullscreen & Overlay Unit Tests...');
+const fullscreenResult = spawnSync(process.execPath, [path.join(rootDir, 'scripts', 'test-fullscreen-unit.mjs')], {
+  cwd: rootDir,
+  stdio: 'inherit',
+});
+if (fullscreenResult.status !== 0) {
+  console.error('[FAIL] Fullscreen unit test suite failed!');
+  process.exit(1);
+}
+console.log('[PASS] Fullscreen unit test suite passed successfully.\n');
+
 console.log('[INFO] Running Real Windows x64 Native Playback Smoke Test...');
 const realPlaybackResult = spawnSync(process.execPath, [path.join(rootDir, 'scripts', 'smoke-test-playback.mjs')], {
   cwd: rootDir,
@@ -291,12 +313,28 @@ child.on('close', (code) => {
       console.log('[PASS] window.nosvedAPI.setVideoBounds IPC channel verified successfully');
     }
 
+    // Check Phase 8 Fullscreen IPC
+    if (!result.fullscreenTestResult || typeof result.fullscreenTestResult.isFullscreen !== 'boolean') {
+      console.error('[FAIL] Fullscreen IPC invocation failed or returned invalid response:', result.fullscreenTestResult);
+      failures++;
+    } else {
+      console.log('[PASS] window.nosvedAPI.isFullscreen IPC channel verified successfully');
+    }
+
+    // Check Phase 8 Media Library IPC
+    if (!result.libraryTestResult || !result.libraryTestResult.isArray) {
+      console.error('[FAIL] Media Library IPC invocation failed or returned invalid response:', result.libraryTestResult);
+      failures++;
+    } else {
+      console.log('[PASS] window.nosvedAPI.getLibrary IPC channel verified successfully');
+    }
+
     if (failures > 0) {
       console.error(`[FAIL] Verification finished with ${failures} failure(s)`);
       process.exit(1);
     }
 
-    console.log('\n>>> ALL PHASE 7 SHELL, PLAYBACK & CONTROLS SECURITY CHECKS PASSED <<<\n');
+    console.log('\n>>> ALL PHASE 8 SHELL, FULLSCREEN, PERSISTENCE & CONTROLS CHECKS PASSED <<<\n');
     process.exit(0);
   } catch (err) {
     console.error('[FAIL] Failed to parse verification payload:', err);

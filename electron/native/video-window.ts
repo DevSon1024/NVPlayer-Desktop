@@ -35,13 +35,19 @@ export interface User32Functions {
   ) => boolean;
   ShowWindow: (hWnd: bigint | number, nCmdShow: number) => boolean;
   IsWindow: (hWnd: bigint | number) => boolean;
+  SetWindowLongPtrW?: (hWnd: bigint | number, nIndex: number, dwNewLong: unknown) => bigint | number;
+  CallWindowProcW?: (lpPrevWndFunc: bigint | number, hWnd: bigint | number, Msg: number, wParam: unknown, lParam: unknown) => bigint | number;
+  DefWindowProcW?: (hWnd: bigint | number, Msg: number, wParam: unknown, lParam: unknown) => bigint | number;
 }
 
-// Win32 Window Styles & Flags
 export const WS_CHILD = 0x40000000;
 export const WS_VISIBLE = 0x10000000;
 export const WS_CLIPSIBLINGS = 0x04000000;
 export const WS_CLIPCHILDREN = 0x02000000;
+export const WS_DISABLED = 0x08000000;
+
+export const WS_EX_TRANSPARENT = 0x00000020;
+export const WS_EX_NOACTIVATE = 0x08000000;
 
 export const SW_HIDE = 0;
 export const SW_SHOWNORMAL = 1;
@@ -78,6 +84,9 @@ export function getUser32Functions(): User32Functions | null {
       ),
       ShowWindow: user32.func('bool ShowWindow(intptr_t hWnd, int nCmdShow)'),
       IsWindow: user32.func('bool IsWindow(intptr_t hWnd)'),
+      SetWindowLongPtrW: user32.func('intptr_t __stdcall SetWindowLongPtrW(intptr_t hWnd, int nIndex, intptr_t dwNewLong)'),
+      CallWindowProcW: user32.func('intptr_t __stdcall CallWindowProcW(intptr_t lpPrevWndFunc, intptr_t hWnd, uint32_t Msg, intptr_t wParam, intptr_t lParam)'),
+      DefWindowProcW: user32.func('intptr_t __stdcall DefWindowProcW(intptr_t hWnd, uint32_t Msg, intptr_t wParam, intptr_t lParam)'),
     };
     return cachedUser32;
   } catch (err) {
@@ -95,9 +104,57 @@ export class NativeVideoWindow {
   private parentHwnd: bigint | number | null = null;
   private isVisible = false;
   private currentBounds: VideoWindowBounds = { x: 0, y: 0, width: 0, height: 0 };
+  private onDoubleClickHandler?: () => void;
+  private prevWndProc: bigint | number = 0n;
+  private subclassCallback: unknown | null = null;
 
   constructor(customUser32?: User32Functions | null) {
     this.user32 = customUser32 !== undefined ? customUser32 : getUser32Functions();
+  }
+
+  public onDoubleClick(handler: () => void): void {
+    this.onDoubleClickHandler = handler;
+  }
+
+  private installSubclass(hwnd: bigint | number): void {
+    if (!this.user32?.SetWindowLongPtrW) return;
+    try {
+      if (!this.subclassCallback) {
+        const WndProcProto = koffi.proto('intptr_t __stdcall NativeVideoWndProc(intptr_t hWnd, uint32_t Msg, intptr_t wParam, intptr_t lParam)');
+        this.subclassCallback = koffi.register((hWnd: bigint | number, msg: number, wParam: unknown, lParam: unknown) => {
+          if (msg === 0x0084) {
+            return -1n;
+          }
+          if (msg === 0x0203) {
+            try {
+              this.onDoubleClickHandler?.();
+            } catch (err) {
+              console.error('[NativeVideoWindow] Error in onDoubleClick handler:', err);
+            }
+          }
+          if (this.prevWndProc && this.user32?.CallWindowProcW) {
+            return this.user32.CallWindowProcW(this.prevWndProc, hWnd, msg, wParam, lParam);
+          }
+          if (this.user32?.DefWindowProcW) {
+            return this.user32.DefWindowProcW(hWnd, msg, wParam, lParam);
+          }
+          return 0n;
+        }, koffi.pointer(WndProcProto));
+      }
+
+      const prev = this.user32.SetWindowLongPtrW(hwnd, -4, this.subclassCallback);
+      if (prev && prev !== this.subclassCallback) {
+        this.prevWndProc = prev;
+      }
+    } catch (err) {
+      console.warn('[NativeVideoWindow] Subclass installation skipped or failed:', err);
+    }
+  }
+
+  public ensureSubclassed(): void {
+    if (this.childHwnd && this.isValid()) {
+      this.installSubclass(this.childHwnd);
+    }
   }
 
   public create(parentHwnd: bigint | number, initialBounds?: VideoWindowBounds): bigint | number | null {
@@ -115,9 +172,10 @@ export class NativeVideoWindow {
     this.currentBounds = { ...b };
 
     try {
-      const style = WS_CHILD | WS_CLIPSIBLINGS | WS_CLIPCHILDREN;
+      const exStyle = WS_EX_TRANSPARENT | WS_EX_NOACTIVATE;
+      const style = WS_CHILD | WS_CLIPSIBLINGS | WS_CLIPCHILDREN | WS_DISABLED;
       const hwnd = this.user32.CreateWindowExW(
-        0,
+        exStyle,
         'STATIC',
         'NosvedNativeVideoSurface',
         style,
@@ -138,6 +196,7 @@ export class NativeVideoWindow {
 
       this.childHwnd = hwnd;
       this.isVisible = false;
+      this.installSubclass(hwnd);
       this.user32.ShowWindow(hwnd, SW_HIDE);
       return hwnd;
     } catch (err) {
@@ -177,6 +236,7 @@ export class NativeVideoWindow {
 
     try {
       if (visible && this.currentBounds.width > 0 && this.currentBounds.height > 0) {
+        this.ensureSubclassed();
         this.user32.ShowWindow(this.childHwnd, SW_SHOWNOACTIVATE);
       } else {
         this.user32.ShowWindow(this.childHwnd, SW_HIDE);

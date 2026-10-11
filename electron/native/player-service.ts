@@ -218,6 +218,9 @@ export class NativePlayerService {
           this.funcs.mpv_set_property_string(allocatedHandle, 'vo', 'null');
         }
         this.funcs.mpv_set_property_string(allocatedHandle, 'idle', 'yes');
+        this.funcs.mpv_set_property_string(allocatedHandle, 'input-default-bindings', 'no');
+        this.funcs.mpv_set_property_string(allocatedHandle, 'input-vo-keyboard', 'no');
+        this.funcs.mpv_set_property_string(allocatedHandle, 'input-cursor', 'no');
 
         console.log('[NativePlayerService] calling mpv_initialize()...');
         const code = this.funcs.mpv_initialize(allocatedHandle);
