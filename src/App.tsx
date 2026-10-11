@@ -251,7 +251,7 @@ export const App: React.FC = () => {
                 </div>
                 <div className="card-row">
                   <span className="row-label">Desktop Runtime</span>
-                  <span className="row-value">Electron 34 (Chromium/Node)</span>
+                  <span className="row-value">Electron 44 (Chromium/Node)</span>
                 </div>
                 <div className="card-row">
                   <span className="row-label">Design System</span>
