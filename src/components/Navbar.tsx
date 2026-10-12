@@ -2,7 +2,6 @@ import React from 'react';
 import {
   Film,
   Home,
-  PlaySquare,
   Library,
   ListMusic,
   History,
@@ -18,7 +17,6 @@ interface NavbarProps {
   onSelectTab: (tab: TabType) => void;
   isIsolated: boolean;
   isElectron: boolean;
-  hasActiveMedia?: boolean;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -26,7 +24,6 @@ export const Navbar: React.FC<NavbarProps> = ({
   onSelectTab,
   isIsolated,
   isElectron,
-  hasActiveMedia = false,
 }) => {
   const getNavBtnClass = (isActive: boolean) =>
     `w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-[13px] font-medium transition-colors text-left outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-pointer border-none bg-transparent ${
@@ -62,19 +59,6 @@ export const Navbar: React.FC<NavbarProps> = ({
             <span>Home</span>
           </div>
         </button>
-
-        {hasActiveMedia && (
-          <button
-            type="button"
-            className={getNavBtnClass(activeTab === 'player')}
-            onClick={() => onSelectTab('player')}
-          >
-            <div className="flex items-center gap-3">
-              <PlaySquare size={18} />
-              <span>Now Playing</span>
-            </div>
-          </button>
-        )}
 
         <button
           type="button"

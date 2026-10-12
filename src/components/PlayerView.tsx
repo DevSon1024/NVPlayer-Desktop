@@ -19,6 +19,8 @@ import {
   Check,
   Sliders,
   FileText,
+  ArrowLeft,
+  Film,
 } from 'lucide-react';
 import type { PlaybackStatus, PlaylistItem, PlayerTracksSnapshot } from '../types/electron';
 import { formatTime } from '../utils/formatters';
@@ -247,11 +249,67 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
           ? `player-fullscreen-active fixed inset-0 z-50 h-screen w-screen p-0 m-0 border-0 border-none rounded-none bg-black shadow-none overflow-hidden select-none ${
               !showOverlay ? 'cursor-none' : 'cursor-default'
             }`
-          : 'w-full flex-1 min-h-0 h-full flex flex-col p-3 gap-2.5 overflow-hidden select-none'
+          : 'w-full flex-1 min-h-0 h-full flex flex-col p-2 gap-2 overflow-hidden select-none'
       }
     >
+      {/* Fullscreen Top Navigation Bar (Revealed with overlay) */}
+      {isFullscreen && (
+        <div
+          className={`fullscreen-top-overlay fixed top-0 inset-x-0 h-12 px-6 flex items-center justify-between z-40 bg-gradient-to-b from-black/85 via-black/40 to-transparent transition-all duration-200 ${
+            showOverlay ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-3 pointer-events-none'
+          }`}
+          onClick={(e) => e.stopPropagation()}
+          onDoubleClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex items-center gap-3 min-w-0">
+            <button
+              type="button"
+              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-semibold backdrop-blur-md border border-white/10 transition cursor-pointer"
+              onClick={(e) => {
+                e.stopPropagation();
+                onTriggerFullscreenToggle();
+              }}
+              title="Exit Fullscreen (Esc or F)"
+              aria-label="Exit Fullscreen"
+            >
+              <ArrowLeft size={15} />
+              <span>Exit Fullscreen</span>
+            </button>
+
+            {playbackStatus.currentFile && (
+              <div className="flex items-center gap-2 text-white/90 text-xs font-medium max-w-lg truncate">
+                <Film size={14} className="text-primary shrink-0" />
+                <span className="truncate">
+                  {playbackStatus.currentFile.split(/[/\\]/).pop() || playbackStatus.currentFile}
+                </span>
+                {playbackStatus.videoWidth && playbackStatus.videoHeight && (
+                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/15 text-white/80 shrink-0">
+                    {playbackStatus.videoWidth}x{playbackStatus.videoHeight}
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white/90 backdrop-blur-md border border-white/10 transition cursor-pointer"
+              onClick={(e) => {
+                e.stopPropagation();
+                onTriggerFullscreenToggle();
+              }}
+              title="Exit Fullscreen (Esc)"
+              aria-label="Exit Fullscreen"
+            >
+              <Minimize2 size={16} />
+            </button>
+          </div>
+        </div>
+      )}
+
       {!isDesktopBridge && !isFullscreen && (
-        <div className="mb-2.5 p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-200 text-xs flex items-center gap-2 shrink-0" role="alert">
+        <div className="mb-2 p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-200 text-xs flex items-center gap-2 shrink-0" role="alert">
           <AlertCircle size={16} />
           <span>
             <strong>Browser Preview Mode:</strong> Native Electron desktop bridge is not available. Playback controls require the desktop window.
@@ -263,8 +321,8 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
       <div
         className={
           isFullscreen
-            ? 'player-container fullscreen-player-container absolute inset-x-0 top-0 bottom-[68px] w-full bg-black border-0 border-none rounded-none shadow-none overflow-hidden select-none cursor-pointer'
-            : 'player-container w-full flex-1 min-h-0 relative select-none bg-black rounded-2xl border border-border/70 overflow-hidden shadow-2xl cursor-pointer'
+            ? 'player-container fullscreen-player-container absolute inset-0 w-full h-full bg-black border-0 border-none rounded-none shadow-none overflow-hidden select-none cursor-pointer'
+            : 'player-container w-full flex-1 min-h-0 relative select-none bg-black rounded-xl border border-border/60 overflow-hidden shadow-xl cursor-pointer'
         }
         onClick={onVideoTapOrClick}
         onDoubleClick={onTriggerFullscreenToggle}
@@ -407,15 +465,17 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
               )}
             </button>
 
-            <button
-              type="button"
-              className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-surface-muted/60 hover:bg-surface-muted text-foreground hover:text-primary transition cursor-pointer border-none"
-              onClick={onOpenFile}
-              title="Open Video File"
-              aria-label="Open Video File"
-            >
-              <FolderOpen size={15} />
-            </button>
+            {!isFullscreen && (
+              <button
+                type="button"
+                className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-surface-muted/60 hover:bg-surface-muted text-foreground hover:text-primary transition cursor-pointer border-none"
+                onClick={onOpenFile}
+                title="Open Video File"
+                aria-label="Open Video File"
+              >
+                <FolderOpen size={15} />
+              </button>
+            )}
 
             {activePlaylist && (
               <>
