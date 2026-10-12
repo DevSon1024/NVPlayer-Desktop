@@ -30,4 +30,4 @@ Thumbs.db
 .DS_Store
 *.dll
 update_details.md
-scripts
+scripts/
