@@ -26,7 +26,7 @@ export function registerPlaylistHandlers(ctx: PlaylistHandlerContext): void {
     if (typeof id !== 'string' || !id.trim() || typeof name !== 'string' || !name.trim()) {
       throw new Error('Invalid playlist rename arguments');
     }
-    return ctx.getMediaDb()?.renamePlaylist(id.trim(), name.trim()) ?? false;
+    return Boolean(ctx.getMediaDb()?.renamePlaylist(id.trim(), name.trim()));
   });
 
   ipcMain.handle('playlist:delete', (event, id: unknown) => {
@@ -43,7 +43,7 @@ export function registerPlaylistHandlers(ctx: PlaylistHandlerContext): void {
     if (!validateIpcSender(event, ctx.getMainWindow(), ctx.isDev)) {
       throw new Error('Unauthorized IPC invocation: Sender validation failed');
     }
-    return ctx.getMediaDb()?.getAllPlaylists() ?? [];
+    return ctx.getMediaDb()?.getPlaylists() ?? [];
   });
 
   ipcMain.handle('playlist:get-details', (event, id: unknown) => {
@@ -53,7 +53,7 @@ export function registerPlaylistHandlers(ctx: PlaylistHandlerContext): void {
     if (typeof id !== 'string' || !id.trim()) {
       throw new Error('Invalid playlist id: Must be a string');
     }
-    return ctx.getMediaDb()?.getPlaylistDetails(id.trim()) ?? null;
+    return ctx.getMediaDb()?.getPlaylistWithItems(id.trim()) ?? null;
   });
 
   ipcMain.handle('playlist:add-items', (event, playlistId: unknown, mediaIds: unknown) => {
