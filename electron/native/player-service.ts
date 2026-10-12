@@ -98,6 +98,8 @@ export class NativePlayerService {
   };
 
   private playbackListeners = new Set<(status: PlaybackStatus) => void>();
+  private fullscreenToggleListeners = new Set<() => void>();
+  private lastMpvFullscreen: string | null = null;
 
   constructor(customFuncsGetter?: () => MpvFunctions) {
     this.funcsGetter = customFuncsGetter ?? (() => getMpvFunctions());
@@ -152,6 +154,23 @@ export class NativePlayerService {
     }
   }
 
+  public onFullscreenToggle(listener: () => void): () => void {
+    this.fullscreenToggleListeners.add(listener);
+    return () => {
+      this.fullscreenToggleListeners.delete(listener);
+    };
+  }
+
+  private notifyFullscreenToggle(): void {
+    for (const listener of this.fullscreenToggleListeners) {
+      try {
+        listener();
+      } catch (err) {
+        console.error('[NativePlayerService] Error in fullscreen toggle listener:', err);
+      }
+    }
+  }
+
   public async initialize(): Promise<PlayerServiceStatus> {
     console.log('[NativePlayerService] initialize() called, current state:', this.state);
     if (this.state === 'shutting-down') {
@@ -159,7 +178,7 @@ export class NativePlayerService {
     }
 
     if (this.state === 'initialized') {
-      throw new Error('Duplicate initialization attempt: Native player is already initialized');
+      return this.getStatus();
     }
 
     if (this.state === 'initializing' && this.initPromise) {
@@ -220,7 +239,7 @@ export class NativePlayerService {
         this.funcs.mpv_set_property_string(allocatedHandle, 'idle', 'yes');
         this.funcs.mpv_set_property_string(allocatedHandle, 'input-default-bindings', 'no');
         this.funcs.mpv_set_property_string(allocatedHandle, 'input-vo-keyboard', 'no');
-        this.funcs.mpv_set_property_string(allocatedHandle, 'input-cursor', 'no');
+        this.funcs.mpv_set_property_string(allocatedHandle, 'input-cursor', 'yes');
 
         console.log('[NativePlayerService] calling mpv_initialize()...');
         const code = this.funcs.mpv_initialize(allocatedHandle);
@@ -242,6 +261,8 @@ export class NativePlayerService {
         this.funcs.mpv_observe_property(allocatedHandle, 6, 'dwidth', 0);
         this.funcs.mpv_observe_property(allocatedHandle, 7, 'dheight', 0);
         this.funcs.mpv_observe_property(allocatedHandle, 8, 'mute', 0);
+        this.funcs.mpv_observe_property(allocatedHandle, 9, 'fullscreen', 0);
+        this.funcs.mpv_command(allocatedHandle, ['keybind', 'MBTN_LEFT_DBL', 'cycle fullscreen', null]);
 
         this.handle = allocatedHandle;
         this.state = 'initialized';
@@ -348,6 +369,14 @@ export class NativePlayerService {
         case MPV_EVENT.PLAYBACK_RESTART:
         case MPV_EVENT.PROPERTY_CHANGE:
         case MPV_EVENT.SEEK:
+          if (ev.event_id === MPV_EVENT.PROPERTY_CHANGE && Number(ev.reply_userdata) === 9) {
+            const currentFs = safeGetMpvPropertyString(this.funcs, this.handle, 'fullscreen');
+            if (this.lastMpvFullscreen !== null && currentFs !== this.lastMpvFullscreen) {
+              this.notifyFullscreenToggle();
+            }
+            this.lastMpvFullscreen = currentFs;
+            break;
+          }
           this.refreshStateFromNative();
           this.updatePositionPolling();
           this.notifyPlaybackChange();
@@ -700,6 +729,7 @@ export class NativePlayerService {
 
         this.state = 'shutdown';
         this.cancelInitRequested = false;
+        this.lastMpvFullscreen = null;
         this.playbackStatus = {
           mediaState: 'idle',
           currentFile: null,

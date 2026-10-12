@@ -130,7 +130,7 @@ function createWindow(): void {
     const childHwnd = videoWindow.create(nativeHwnd);
     if (childHwnd) {
       playerService.setVideoWindowHwnd(childHwnd);
-      videoWindow.onDoubleClick(() => {
+      playerService.onFullscreenToggle(() => {
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send('window:video-double-clicked');
         }
