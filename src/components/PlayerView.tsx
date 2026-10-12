@@ -1,6 +1,5 @@
 import React from 'react';
 import {
-  Film,
   Play,
   Pause,
   FolderOpen,
@@ -167,7 +166,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
           } ${isFullscreen && resumePrompt ? 'resume-visible-clearance' : ''}`}
           ref={videoViewportRef}
         >
-          {playbackStatus.currentFile ? (
+          {playbackStatus.currentFile && (
             <>
               {playbackStatus.mediaState === 'loading' && (
                 <div className="player-loading-overlay">
@@ -193,46 +192,6 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
                 </div>
               )}
             </>
-          ) : (
-            <div className="player-empty-state">
-              <div className="player-placeholder-icon">
-                <Film size={32} />
-              </div>
-              <h2 className="player-empty-title">Ready for Playback</h2>
-              <p className="player-empty-desc">
-                Native libmpv engine initialized. Select a local video file to begin hardware-accelerated playback.
-              </p>
-              {playbackStatus.error && (
-                <div className="player-error-banner" role="alert" style={{ marginTop: 12 }}>
-                  <div className="error-banner-body">
-                    <AlertCircle size={16} />
-                    <span>{playbackStatus.error}</span>
-                  </div>
-                  <button
-                    type="button"
-                    className="error-dismiss-btn"
-                    onClick={onDismissError}
-                    title="Dismiss error (Esc)"
-                    aria-label="Dismiss error"
-                  >
-                    <X size={14} />
-                  </button>
-                </div>
-              )}
-              <button
-                type="button"
-                className="open-file-btn"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onOpenFile();
-                }}
-                onTouchEnd={(e) => e.stopPropagation()}
-                aria-label="Open video file from disk"
-              >
-                <FolderOpen size={18} />
-                <span>Open Video File</span>
-              </button>
-            </div>
           )}
         </div>
 

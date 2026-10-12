@@ -1,6 +1,7 @@
 import React from 'react';
 import {
   Film,
+  Home,
   PlaySquare,
   Library,
   ListMusic,
@@ -10,13 +11,14 @@ import {
   AlertCircle,
 } from 'lucide-react';
 
-export type TabType = 'player' | 'library' | 'playlists' | 'recent' | 'settings';
+export type TabType = 'home' | 'player' | 'library' | 'playlists' | 'recent' | 'settings';
 
 interface NavbarProps {
   activeTab: TabType;
   onSelectTab: (tab: TabType) => void;
   isIsolated: boolean;
   isElectron: boolean;
+  hasActiveMedia?: boolean;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -24,6 +26,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onSelectTab,
   isIsolated,
   isElectron,
+  hasActiveMedia = false,
 }) => {
   return (
     <aside className="app-sidebar">
@@ -42,14 +45,27 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         <button
           type="button"
-          className={`nav-item ${activeTab === 'player' ? 'active' : ''}`}
-          onClick={() => onSelectTab('player')}
+          className={`nav-item ${activeTab === 'home' ? 'active' : ''}`}
+          onClick={() => onSelectTab('home')}
         >
           <div className="nav-item-content">
-            <PlaySquare size={18} />
-            <span>Now Playing</span>
+            <Home size={18} />
+            <span>Home</span>
           </div>
         </button>
+
+        {hasActiveMedia && (
+          <button
+            type="button"
+            className={`nav-item ${activeTab === 'player' ? 'active' : ''}`}
+            onClick={() => onSelectTab('player')}
+          >
+            <div className="nav-item-content">
+              <PlaySquare size={18} />
+              <span>Now Playing</span>
+            </div>
+          </button>
+        )}
 
         <button
           type="button"

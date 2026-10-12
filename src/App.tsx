@@ -4,6 +4,8 @@ import type { PlaybackStatus, MediaItem, Playlist, PlaylistItem } from './types/
 
 import { Navbar, TabType } from './components/Navbar';
 import { PlayerView, ActivePlaylistState, ResumePromptState } from './components/PlayerView';
+import { HomeView } from './components/HomeView';
+import { FloatingIsland } from './components/FloatingIsland';
 import { LibraryView } from './components/LibraryView';
 import { PlaylistsView } from './components/PlaylistsView';
 import { RecentView } from './components/RecentView';
@@ -49,7 +51,7 @@ export const App: React.FC = () => {
     videoWidth: null,
     videoHeight: null,
   });
-  const [activeTab, setActiveTab] = useState<TabType>('player');
+  const [activeTab, setActiveTab] = useState<TabType>('home');
 
   // Fullscreen & Overlay State
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -301,8 +303,26 @@ export const App: React.FC = () => {
     }
   }, []);
 
+  // Auto-redirect to Home if user lands on Player tab without active media
   useEffect(() => {
-    if (activeTab === 'library') {
+    if (activeTab === 'player' && (!playbackStatus.currentFile || playbackStatus.mediaState === 'idle')) {
+      setActiveTab('home');
+    }
+  }, [activeTab, playbackStatus.currentFile, playbackStatus.mediaState]);
+
+  // Initial fetch on application launch
+  useEffect(() => {
+    refreshLibrary();
+    refreshRecent();
+    refreshPlaylists();
+  }, [refreshLibrary, refreshRecent, refreshPlaylists]);
+
+  useEffect(() => {
+    if (activeTab === 'home') {
+      refreshRecent();
+      refreshLibrary();
+      refreshPlaylists();
+    } else if (activeTab === 'library') {
       refreshLibrary();
     } else if (activeTab === 'recent') {
       refreshRecent();
@@ -690,9 +710,10 @@ export const App: React.FC = () => {
     if (!window.nosvedAPI?.removeMedia) return;
     try {
       await window.nosvedAPI.removeMedia(id);
-      if (activeTab === 'library') {
+      if (activeTab === 'library' || activeTab === 'home') {
         await refreshLibrary();
-      } else if (activeTab === 'recent') {
+      }
+      if (activeTab === 'recent' || activeTab === 'home') {
         await refreshRecent();
       }
     } catch (err) {
@@ -847,6 +868,14 @@ export const App: React.FC = () => {
     resetInactivityTimer,
   ]);
 
+  const currentPlayingItem =
+    recentItems.find((it) => it.filePath === playbackStatus.currentFile) ||
+    libraryItems.find((it) => it.filePath === playbackStatus.currentFile) ||
+    (activePlaylist && activePlaylist.items[activePlaylist.currentIndex]?.media?.filePath === playbackStatus.currentFile
+      ? activePlaylist.items[activePlaylist.currentIndex]?.media
+      : undefined);
+  const currentThumbnailKey = currentPlayingItem?.thumbnailKey;
+
   return (
     <div
       className={`app-layout ${isFullscreen ? 'fullscreen-active' : ''}`}
@@ -859,6 +888,7 @@ export const App: React.FC = () => {
           onSelectTab={setActiveTab}
           isIsolated={isIsolated}
           isElectron={isDesktopBridge}
+          hasActiveMedia={Boolean(playbackStatus.currentFile && playbackStatus.mediaState !== 'idle')}
         />
       )}
 
@@ -897,8 +927,20 @@ export const App: React.FC = () => {
         )}
 
         <section className={`viewport-body ${isFullscreen ? 'fullscreen-body' : ''}`}>
+          {/* Tab Content: Home Landing View */}
+          {activeTab === 'home' && !isFullscreen && (
+            <HomeView
+              recentItems={recentItems}
+              libraryItems={libraryItems}
+              playlists={playlists}
+              onOpenMedia={openMediaWithResumeCheck}
+              onOpenFile={handleOpenFile}
+              onNavigateTab={setActiveTab}
+            />
+          )}
+
           {/* Tab Content: Now Playing View */}
-          {(activeTab === 'player' || isFullscreen) && (
+          {((activeTab === 'player' && Boolean(playbackStatus.currentFile && playbackStatus.mediaState !== 'idle')) || isFullscreen) && (
             <PlayerView
               videoViewportRef={videoViewportRef}
               playbackStatus={playbackStatus}
@@ -1052,6 +1094,22 @@ export const App: React.FC = () => {
             onSubmit={handleAddFromLibrary}
           />
         </section>
+
+        {/* Hovering Playback Island (Bottom Mini Player Pill) */}
+        {activeTab !== 'player' &&
+          !isFullscreen &&
+          Boolean(playbackStatus.currentFile && playbackStatus.mediaState !== 'idle') && (
+            <FloatingIsland
+              playbackStatus={playbackStatus}
+              activePlaylist={activePlaylist}
+              thumbnailKey={currentThumbnailKey}
+              onNavigateToPlayer={() => setActiveTab('player')}
+              onTogglePlayPause={handleTogglePlayPause}
+              onToggleMute={handleToggleMute}
+              onPlayNext={activePlaylist ? handlePlayNextPlaylistItem : undefined}
+              onPlayPrev={activePlaylist ? handlePlayPrevPlaylistItem : undefined}
+            />
+          )}
       </main>
     </div>
   );
