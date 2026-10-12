@@ -53,6 +53,24 @@ export interface PlaylistItemPayload {
   media?: MediaItemPayload;
 }
 
+export interface MediaTrackPayload {
+  id: number;
+  type: 'video' | 'audio' | 'sub';
+  title?: string;
+  lang?: string;
+  codec?: string;
+  selected: boolean;
+  isDefault?: boolean;
+}
+
+export interface PlayerTracksSnapshotPayload {
+  audioTracks: MediaTrackPayload[];
+  subtitleTracks: MediaTrackPayload[];
+  selectedAudioId: number | string | null;
+  selectedSubtitleId: number | string | null;
+  subtitlesVisible: boolean;
+}
+
 export interface NosvedAPI {
   getAppInfo: () => Promise<{
     name: string;
@@ -129,6 +147,15 @@ export interface NosvedAPI {
   getPlaybackStatus: () => Promise<PlaybackStatusPayload>;
   onPlaybackStatus: (callback: (status: PlaybackStatusPayload) => void) => () => void;
 
+  // Track APIs
+  getTracks: () => Promise<PlayerTracksSnapshotPayload>;
+  setAudioTrack: (trackId: number | string) => Promise<PlayerTracksSnapshotPayload>;
+  setSubtitleTrack: (trackId: number | string) => Promise<PlayerTracksSnapshotPayload>;
+  setSubtitlesVisible: (visible: boolean) => Promise<PlayerTracksSnapshotPayload>;
+  selectSubtitleFile: () => Promise<{ canceled: boolean; filePath?: string; tracks?: PlayerTracksSnapshotPayload; error?: string }>;
+  setSubtitleDelay: (seconds: number) => Promise<number>;
+  setAudioDelay: (seconds: number) => Promise<number>;
+
   // Phase 8 Fullscreen APIs
   toggleFullscreen: () => Promise<boolean>;
   setFullscreen: (fullscreen: boolean) => Promise<boolean>;
@@ -185,6 +212,13 @@ const api: NosvedAPI = {
   toggleMute: () => ipcRenderer.invoke('player:toggle-mute'),
   setVideoBounds: (bounds) => ipcRenderer.invoke('player:set-video-bounds', bounds),
   getPlaybackStatus: () => ipcRenderer.invoke('player:get-playback-status'),
+  getTracks: () => ipcRenderer.invoke('player:get-tracks'),
+  setAudioTrack: (trackId) => ipcRenderer.invoke('player:set-audio-track', trackId),
+  setSubtitleTrack: (trackId) => ipcRenderer.invoke('player:set-subtitle-track', trackId),
+  setSubtitlesVisible: (visible) => ipcRenderer.invoke('player:set-subtitles-visible', visible),
+  selectSubtitleFile: () => ipcRenderer.invoke('player:select-subtitle-file'),
+  setSubtitleDelay: (seconds) => ipcRenderer.invoke('player:set-subtitle-delay', seconds),
+  setAudioDelay: (seconds) => ipcRenderer.invoke('player:set-audio-delay', seconds),
   onPlaybackStatus: (callback) => {
     const handler = (_event: Electron.IpcRendererEvent, status: unknown) => {
       callback(status as PlaybackStatusPayload);

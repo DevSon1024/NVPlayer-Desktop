@@ -50,6 +50,24 @@ export interface PlaybackStatus {
   error?: string;
 }
 
+export interface MediaTrackInfo {
+  id: number;
+  type: 'video' | 'audio' | 'sub';
+  title?: string;
+  lang?: string;
+  codec?: string;
+  selected: boolean;
+  isDefault?: boolean;
+}
+
+export interface PlayerTracksSnapshot {
+  audioTracks: MediaTrackInfo[];
+  subtitleTracks: MediaTrackInfo[];
+  selectedAudioId: number | string | null;
+  selectedSubtitleId: number | string | null;
+  subtitlesVisible: boolean;
+}
+
 export const SUPPORTED_VIDEO_EXTENSIONS = [
   '.mp4',
   '.mkv',
@@ -670,7 +688,154 @@ export class NativePlayerService {
     return this.setMuted(!this.playbackStatus.muted);
   }
 
-  // --- Shutdown ---
+  // Track Management
+  public getTracks(): PlayerTracksSnapshot {
+    if (!this.handle || !this.funcs) {
+      return {
+        audioTracks: [],
+        subtitleTracks: [],
+        selectedAudioId: null,
+        selectedSubtitleId: null,
+        subtitlesVisible: true,
+      };
+    }
+
+    const audioTracks: MediaTrackInfo[] = [];
+    const subtitleTracks: MediaTrackInfo[] = [];
+
+    const countStr = safeGetMpvPropertyString(this.funcs, this.handle, 'track-list/count');
+    const count = countStr ? parseInt(countStr, 10) : 0;
+
+    for (let i = 0; i < count; i++) {
+      const type = safeGetMpvPropertyString(this.funcs, this.handle, `track-list/${i}/type`);
+      const idStr = safeGetMpvPropertyString(this.funcs, this.handle, `track-list/${i}/id`);
+      const title = safeGetMpvPropertyString(this.funcs, this.handle, `track-list/${i}/title`) || undefined;
+      const lang = safeGetMpvPropertyString(this.funcs, this.handle, `track-list/${i}/lang`) || undefined;
+      const codec = safeGetMpvPropertyString(this.funcs, this.handle, `track-list/${i}/codec`) || undefined;
+      const selectedStr = safeGetMpvPropertyString(this.funcs, this.handle, `track-list/${i}/selected`);
+      const defaultStr = safeGetMpvPropertyString(this.funcs, this.handle, `track-list/${i}/default`);
+
+      const id = idStr ? parseInt(idStr, 10) : i + 1;
+      const selected = selectedStr === 'yes';
+      const isDefault = defaultStr === 'yes';
+
+      if (type === 'audio') {
+        audioTracks.push({
+          id,
+          type: 'audio',
+          title,
+          lang,
+          codec,
+          selected,
+          isDefault,
+        });
+      } else if (type === 'sub') {
+        subtitleTracks.push({
+          id,
+          type: 'sub',
+          title,
+          lang,
+          codec,
+          selected,
+          isDefault,
+        });
+      }
+    }
+
+    const aidStr = safeGetMpvPropertyString(this.funcs, this.handle, 'aid');
+    const sidStr = safeGetMpvPropertyString(this.funcs, this.handle, 'sid');
+    const subVisStr = safeGetMpvPropertyString(this.funcs, this.handle, 'sub-visibility');
+
+    return {
+      audioTracks,
+      subtitleTracks,
+      selectedAudioId: aidStr === 'no' ? 'no' : aidStr ? parseInt(aidStr, 10) : null,
+      selectedSubtitleId: sidStr === 'no' ? 'no' : sidStr ? parseInt(sidStr, 10) : null,
+      subtitlesVisible: subVisStr !== 'no',
+    };
+  }
+
+  public async setAudioTrack(trackId: number | string): Promise<PlayerTracksSnapshot> {
+    if (!this.handle || !this.funcs) {
+      throw new Error('Cannot set audio track: Native player instance is not initialized');
+    }
+    const val = String(trackId);
+    const code = this.funcs.mpv_set_property_string(this.handle, 'aid', val);
+    if (code < 0) {
+      const errStr = this.funcs.mpv_error_string(code);
+      throw new Error(`Failed to set audio track: ${errStr}`);
+    }
+    return this.getTracks();
+  }
+
+  public async setSubtitleTrack(trackId: number | string): Promise<PlayerTracksSnapshot> {
+    if (!this.handle || !this.funcs) {
+      throw new Error('Cannot set subtitle track: Native player instance is not initialized');
+    }
+    const val = String(trackId);
+    const code = this.funcs.mpv_set_property_string(this.handle, 'sid', val);
+    if (code < 0) {
+      const errStr = this.funcs.mpv_error_string(code);
+      throw new Error(`Failed to set subtitle track: ${errStr}`);
+    }
+    if (val !== 'no') {
+      this.funcs.mpv_set_property_string(this.handle, 'sub-visibility', 'yes');
+    }
+    return this.getTracks();
+  }
+
+  public async setSubtitlesVisible(visible: boolean): Promise<PlayerTracksSnapshot> {
+    if (!this.handle || !this.funcs) {
+      throw new Error('Cannot set subtitle visibility: Native player instance is not initialized');
+    }
+    const code = this.funcs.mpv_set_property_string(this.handle, 'sub-visibility', visible ? 'yes' : 'no');
+    if (code < 0) {
+      const errStr = this.funcs.mpv_error_string(code);
+      throw new Error(`Failed to set subtitle visibility: ${errStr}`);
+    }
+    return this.getTracks();
+  }
+
+  public async addSubtitleFile(filePath: string): Promise<PlayerTracksSnapshot> {
+    if (!this.handle || !this.funcs) {
+      throw new Error('Cannot add subtitle file: Native player instance is not initialized');
+    }
+    if (!fs.existsSync(filePath)) {
+      throw new Error(`Subtitle file does not exist: ${filePath}`);
+    }
+    const code = this.funcs.mpv_command(this.handle, ['sub-add', filePath, 'select', null]);
+    if (code < 0) {
+      const errStr = this.funcs.mpv_error_string(code);
+      throw new Error(`Failed to add subtitle file: ${errStr}`);
+    }
+    return this.getTracks();
+  }
+
+  public async setSubtitleDelay(seconds: number): Promise<number> {
+    if (!this.handle || !this.funcs) {
+      throw new Error('Cannot set subtitle delay: Native player instance is not initialized');
+    }
+    const code = this.funcs.mpv_set_property_string(this.handle, 'sub-delay', String(seconds));
+    if (code < 0) {
+      const errStr = this.funcs.mpv_error_string(code);
+      throw new Error(`Failed to set subtitle delay: ${errStr}`);
+    }
+    return seconds;
+  }
+
+  public async setAudioDelay(seconds: number): Promise<number> {
+    if (!this.handle || !this.funcs) {
+      throw new Error('Cannot set audio delay: Native player instance is not initialized');
+    }
+    const code = this.funcs.mpv_set_property_string(this.handle, 'audio-delay', String(seconds));
+    if (code < 0) {
+      const errStr = this.funcs.mpv_error_string(code);
+      throw new Error(`Failed to set audio delay: ${errStr}`);
+    }
+    return seconds;
+  }
+
+  // Shutdown
 
   public async shutdown(): Promise<PlayerServiceStatus> {
     if (this.state === 'shutdown') {

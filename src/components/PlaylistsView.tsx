@@ -44,7 +44,7 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({
   onRemovePlaylistItem,
 }) => {
   return (
-    <div className="flex-1 overflow-hidden flex h-full select-none">
+    <div className="flex-1 min-h-0 overflow-hidden flex h-full w-full select-none">
       {/* Playlists Sidebar */}
       <div className="w-[280px] min-w-[280px] bg-surface-muted/50 border-r border-border flex flex-col p-4 gap-4 overflow-y-auto shrink-0 h-full">
         <div className="flex items-center justify-between">

@@ -11,6 +11,24 @@ export interface PlaybackStatus {
   error?: string;
 }
 
+export interface MediaTrackInfo {
+  id: number;
+  type: 'video' | 'audio' | 'sub';
+  title?: string;
+  lang?: string;
+  codec?: string;
+  selected: boolean;
+  isDefault?: boolean;
+}
+
+export interface PlayerTracksSnapshot {
+  audioTracks: MediaTrackInfo[];
+  subtitleTracks: MediaTrackInfo[];
+  selectedAudioId: number | string | null;
+  selectedSubtitleId: number | string | null;
+  subtitlesVisible: boolean;
+}
+
 export interface MediaItem {
   id: string;
   filePath: string;
@@ -122,6 +140,15 @@ export interface NosvedAPI {
   setVideoBounds: (bounds: { x: number; y: number; width: number; height: number; visible?: boolean }) => Promise<{ success: boolean }>;
   getPlaybackStatus: () => Promise<PlaybackStatus>;
   onPlaybackStatus: (callback: (status: PlaybackStatus) => void) => () => void;
+
+  // Audio & Subtitle Track APIs
+  getTracks: () => Promise<PlayerTracksSnapshot>;
+  setAudioTrack: (trackId: number | string) => Promise<PlayerTracksSnapshot>;
+  setSubtitleTrack: (trackId: number | string) => Promise<PlayerTracksSnapshot>;
+  setSubtitlesVisible: (visible: boolean) => Promise<PlayerTracksSnapshot>;
+  selectSubtitleFile: () => Promise<{ canceled: boolean; filePath?: string; tracks?: PlayerTracksSnapshot; error?: string }>;
+  setSubtitleDelay: (seconds: number) => Promise<number>;
+  setAudioDelay: (seconds: number) => Promise<number>;
 
   // Fullscreen APIs (Phase 8)
   toggleFullscreen: () => Promise<boolean>;

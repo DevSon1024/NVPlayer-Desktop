@@ -323,7 +323,8 @@ html.compact-ui {
 .player-container {
   width: 100%;
   flex: 1;
-  min-height: 280px;
+  min-height: 0;
+  height: 100%;
   background-color: var(--md-sys-color-surface-container-lowest);
   border: 1px solid var(--md-sys-color-outline-variant);
   border-radius: var(--md-shape-corner-xl);
@@ -332,6 +333,23 @@ html.compact-ui {
   position: relative;
   overflow: hidden;
   box-shadow: var(--md-elevation-2);
+}
+
+.player-container.fullscreen-player-container,
+.player-fullscreen-active .player-container,
+.player-fullscreen-mode .player-container,
+.player-fullscreen-active,
+.player-fullscreen-mode,
+.player-fullscreen-active .main-viewport,
+.player-fullscreen-active .viewport-body {
+  border: none !important;
+  border-width: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  outline: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  background-color: #000000 !important;
 }
 
 .player-video-viewport {
@@ -343,99 +361,72 @@ html.compact-ui {
   align-items: center;
   justify-content: center;
   background-color: #000000;
-}
-
-.player-container.fullscreen-player-container {
-  border-radius: 0;
-  border: none;
-  height: 100vh;
-  width: 100vw;
-  background-color: #000000;
-  box-shadow: none;
+  overflow: hidden;
 }
 
 .player-video-viewport.fullscreen-video-viewport {
-  width: 100vw;
-  height: 100vh;
+  width: 100%;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 68px;
   background-color: #000000;
-  cursor: default;
-  transition: height 150ms var(--motion-easing-standard);
+  border: none !important;
 }
 
-.player-video-viewport.fullscreen-video-viewport.overlay-visible-clearance {
-  height: calc(100vh - 64px);
-}
-
-.player-video-viewport.fullscreen-video-viewport.resume-visible-clearance {
-  margin-top: 60px;
-  height: calc(100vh - 60px);
-}
-
-.player-video-viewport.fullscreen-video-viewport.overlay-visible-clearance.resume-visible-clearance {
-  margin-top: 60px;
-  height: calc(100vh - 64px - 60px);
-}
-
-.player-controls-bar {
-  height: 52px;
-  min-height: 52px;
-  background-color: rgba(18, 20, 26, 0.95);
-  backdrop-filter: blur(10px);
-  border-top: 1px solid var(--md-sys-color-outline-variant);
+/* Dedicated Bottom Playback Strip in Windowed Mode */
+.player-controls-strip {
+  width: 100%;
+  height: 60px;
+  min-height: 60px;
+  flex-shrink: 0;
+  background-color: var(--md-sys-color-surface-container-low);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-shape-corner-l);
   display: flex;
   align-items: center;
+  justify-content: space-between;
   padding: 0 16px;
   gap: 14px;
-  z-index: 2;
-  flex-shrink: 0;
+  box-shadow: var(--md-elevation-1);
+  z-index: 20;
 }
 
-.fullscreen-overlay-bar {
-  position: fixed;
+/* Floating Playback Controls Overlay in Fullscreen Mode */
+.player-controls-overlay {
+  position: absolute;
   bottom: 0;
   left: 0;
   right: 0;
-  height: 64px;
+  height: 68px;
   background: linear-gradient(
     to top,
-    rgba(10, 12, 16, 0.95) 0%,
-    rgba(10, 12, 16, 0.8) 75%,
+    rgba(5, 7, 10, 0.98) 0%,
+    rgba(5, 7, 10, 0.85) 50%,
+    rgba(5, 7, 10, 0.4) 80%,
     transparent 100%
   );
-  backdrop-filter: blur(12px);
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-  padding: 0 24px;
+  border-top: none;
   display: flex;
   align-items: center;
-  z-index: 50;
-  transition: opacity 250ms var(--motion-easing-standard), transform 250ms var(--motion-easing-standard);
+  justify-content: space-between;
+  padding: 12px 24px 8px 24px;
+  gap: 16px;
+  z-index: 40;
+  transition: opacity 280ms var(--motion-easing-standard), transform 280ms var(--motion-easing-standard);
 }
 
-.fullscreen-overlay-bar.overlay-show {
-  opacity: 1;
-  transform: translateY(0);
-  pointer-events: auto;
-}
-
-.fullscreen-overlay-bar.overlay-hide {
+.player-controls-overlay.overlay-hide {
   opacity: 0;
-  transform: translateY(100%);
+  transform: translateY(16px);
   pointer-events: none;
 }
 
-.resume-playback-modal {
-  position: fixed;
-  top: 16px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 100;
-  width: 90%;
-  max-width: 680px;
-  animation: slideDown 250ms var(--motion-easing-standard);
-}
-
-.resume-playback-modal.fullscreen-resume-modal {
-  top: 24px;
+.player-controls-overlay.overlay-show {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
 }
 
 /* Custom Range Slider Thumb Styling */

@@ -179,4 +179,90 @@ export function registerPlayerHandlers(ctx: PlayerHandlerContext): void {
 
     return { success: true };
   });
+
+  ipcMain.handle('player:get-tracks', (event) => {
+    if (!validateIpcSender(event, ctx.getMainWindow(), ctx.isDev)) {
+      throw new Error('Unauthorized IPC invocation: Sender validation failed');
+    }
+    return ctx.playerService.getTracks();
+  });
+
+  ipcMain.handle('player:set-audio-track', async (event, trackId: unknown) => {
+    if (!validateIpcSender(event, ctx.getMainWindow(), ctx.isDev)) {
+      throw new Error('Unauthorized IPC invocation: Sender validation failed');
+    }
+    if (typeof trackId !== 'string' && typeof trackId !== 'number') {
+      throw new Error('Invalid argument: Track ID must be a string or number');
+    }
+    return ctx.playerService.setAudioTrack(trackId);
+  });
+
+  ipcMain.handle('player:set-subtitle-track', async (event, trackId: unknown) => {
+    if (!validateIpcSender(event, ctx.getMainWindow(), ctx.isDev)) {
+      throw new Error('Unauthorized IPC invocation: Sender validation failed');
+    }
+    if (typeof trackId !== 'string' && typeof trackId !== 'number') {
+      throw new Error('Invalid argument: Track ID must be a string or number');
+    }
+    return ctx.playerService.setSubtitleTrack(trackId);
+  });
+
+  ipcMain.handle('player:set-subtitles-visible', async (event, visible: unknown) => {
+    if (!validateIpcSender(event, ctx.getMainWindow(), ctx.isDev)) {
+      throw new Error('Unauthorized IPC invocation: Sender validation failed');
+    }
+    if (typeof visible !== 'boolean') {
+      throw new Error('Invalid argument: Visible must be a boolean');
+    }
+    return ctx.playerService.setSubtitlesVisible(visible);
+  });
+
+  ipcMain.handle('player:select-subtitle-file', async (event) => {
+    const mainWindow = ctx.getMainWindow();
+    if (!validateIpcSender(event, mainWindow, ctx.isDev)) {
+      throw new Error('Unauthorized IPC invocation: Sender validation failed');
+    }
+    if (!mainWindow) {
+      throw new Error('Window is not available');
+    }
+
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: 'Select Subtitle File',
+      filters: [
+        {
+          name: 'Subtitle Files',
+          extensions: ['srt', 'vtt', 'ass', 'ssa', 'sub', 'idx'],
+        },
+      ],
+      properties: ['openFile'],
+    });
+
+    if (result.canceled || result.filePaths.length === 0) {
+      return { canceled: true, tracks: ctx.playerService.getTracks() };
+    }
+
+    const subPath = result.filePaths[0];
+    const tracks = await ctx.playerService.addSubtitleFile(subPath);
+    return { canceled: false, filePath: subPath, tracks };
+  });
+
+  ipcMain.handle('player:set-subtitle-delay', async (event, seconds: unknown) => {
+    if (!validateIpcSender(event, ctx.getMainWindow(), ctx.isDev)) {
+      throw new Error('Unauthorized IPC invocation: Sender validation failed');
+    }
+    if (typeof seconds !== 'number' || !Number.isFinite(seconds)) {
+      throw new Error('Invalid argument: Seconds must be a finite number');
+    }
+    return ctx.playerService.setSubtitleDelay(seconds);
+  });
+
+  ipcMain.handle('player:set-audio-delay', async (event, seconds: unknown) => {
+    if (!validateIpcSender(event, ctx.getMainWindow(), ctx.isDev)) {
+      throw new Error('Unauthorized IPC invocation: Sender validation failed');
+    }
+    if (typeof seconds !== 'number' || !Number.isFinite(seconds)) {
+      throw new Error('Invalid argument: Seconds must be a finite number');
+    }
+    return ctx.playerService.setAudioDelay(seconds);
+  });
 }

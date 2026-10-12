@@ -46,20 +46,31 @@ interface ToggleRowProps {
 }
 
 const SettingToggleRow: React.FC<ToggleRowProps> = ({ label, desc, checked, onChange }) => (
-  <div className="flex items-center justify-between gap-4 py-2.5 border-b border-border/40 last:border-none">
-    <div className="flex flex-col gap-0.5">
-      <span className="text-xs font-medium text-foreground">{label}</span>
-      <span className="text-[11px] text-muted-foreground">{desc}</span>
+  <div className="flex items-center justify-between gap-4 py-3 border-b border-border/40 last:border-none">
+    <div className="flex flex-col gap-0.5 max-w-[80%]">
+      <span className="text-xs font-semibold text-foreground tracking-tight">{label}</span>
+      <span className="text-[11px] text-muted-foreground leading-relaxed">{desc}</span>
     </div>
-    <label className="relative inline-flex items-center cursor-pointer select-none shrink-0">
-      <input
-        type="checkbox"
-        className="sr-only peer"
-        checked={checked}
-        onChange={(e) => onChange(e.target.checked)}
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      onClick={() => onChange(!checked)}
+      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-all duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 ${
+        checked
+          ? 'bg-primary shadow-[0_0_10px_rgba(59,130,246,0.3)]'
+          : 'bg-surface-elevated border border-border/80 hover:border-outline'
+      }`}
+    >
+      <span className="sr-only">{label}</span>
+      <span
+        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full shadow-md transition-all duration-200 ease-in-out ${
+          checked
+            ? 'translate-x-5 bg-primary-foreground scale-105'
+            : 'translate-x-0 bg-muted-foreground/80'
+        }`}
       />
-      <div className="w-10 h-5 bg-surface-muted border border-border peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2.5px] after:left-[2.5px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
-    </label>
+    </button>
   </div>
 );
 
@@ -104,7 +115,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   };
 
   return (
-    <div className="flex-1 flex h-full w-full overflow-hidden bg-background select-none">
+    <div className="flex-1 min-h-0 flex h-full w-full overflow-hidden bg-background select-none">
       {/* Settings Navigation Sidebar */}
       <aside className="w-[250px] min-w-[250px] bg-surface border-r border-border flex flex-col p-6 gap-5 overflow-y-auto shrink-0">
         <div className="flex flex-col gap-1 px-2">
@@ -196,7 +207,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       </aside>
 
       {/* Settings Content Area */}
-      <main className="flex-1 overflow-y-auto px-10 py-8 pb-24 flex flex-col gap-6 relative">
+      <main className="flex-1 min-h-0 overflow-y-auto px-10 py-8 pb-24 flex flex-col gap-6 relative">
         {feedbackMessage && (
           <div
             className={`flex items-center gap-2.5 px-4 py-3 rounded-xl text-sm font-medium max-w-[860px] animate-fadeIn ${

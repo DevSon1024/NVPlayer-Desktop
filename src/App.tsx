@@ -61,7 +61,8 @@ export const App: React.FC = () => {
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
 
   // Fullscreen & Overlay State
-  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isAppFullscreen, setIsAppFullscreen] = useState(false);
+  const [isPlayerFullscreen, setIsPlayerFullscreen] = useState(false);
   const [showOverlay, setShowOverlay] = useState(true);
   const inactivityTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isInteractingWithControlsRef = useRef(false);
@@ -92,6 +93,7 @@ export const App: React.FC = () => {
   // Scrubbing & seeking state
   const [isScrubbing, setIsScrubbing] = useState(false);
   const [scrubPosition, setScrubPosition] = useState<number | null>(null);
+  const [isTrackModalOpen, setIsTrackModalOpen] = useState(false);
   const isCommandInFlightRef = useRef(false);
 
   const [videoViewportEl, setVideoViewportEl] = useState<HTMLDivElement | null>(null);
@@ -106,7 +108,8 @@ export const App: React.FC = () => {
       playbackStatus.currentFile &&
       playbackStatus.mediaState !== 'idle' &&
       playbackStatus.mediaState !== 'error' &&
-      (activeTab === 'player' || isFullscreen)
+      (activeTab === 'player' || isPlayerFullscreen) &&
+      !isTrackModalOpen
     );
 
     if (!shouldBeVisible || !videoViewportEl) {
@@ -133,7 +136,7 @@ export const App: React.FC = () => {
         visible: true,
       })
       .catch(console.error);
-  }, [playbackStatus.currentFile, playbackStatus.mediaState, activeTab, isFullscreen, videoViewportEl]);
+  }, [playbackStatus.currentFile, playbackStatus.mediaState, activeTab, isPlayerFullscreen, videoViewportEl, isTrackModalOpen]);
 
   useEffect(() => {
     updateVideoBounds();
@@ -141,7 +144,7 @@ export const App: React.FC = () => {
       updateVideoBounds();
     });
     return () => cancelAnimationFrame(rafId);
-  }, [updateVideoBounds, isFullscreen, showOverlay, activeTab, resumePrompt]);
+  }, [updateVideoBounds, isPlayerFullscreen, isAppFullscreen, showOverlay, activeTab, resumePrompt, isTrackModalOpen]);
 
   useEffect(() => {
     if (!videoViewportEl) {
@@ -174,7 +177,7 @@ export const App: React.FC = () => {
     };
   }, [videoViewportEl, updateVideoBounds]);
 
-  // Fullscreen auto-hide timer management
+  // Fullscreen auto-hide timer management (10-second timeout on inactivity)
   const resetInactivityTimer = useCallback(() => {
     if (inactivityTimerRef.current) {
       clearTimeout(inactivityTimerRef.current);
@@ -182,17 +185,17 @@ export const App: React.FC = () => {
     }
     setShowOverlay(true);
 
-    if (isFullscreen) {
+    if (isPlayerFullscreen) {
       inactivityTimerRef.current = setTimeout(() => {
         if (!isScrubbing && !isInteractingWithControlsRef.current && !isControlsFocusedRef.current) {
           setShowOverlay(false);
         }
-      }, settings.hideControlsTimeoutMs);
+      }, 10000); // 10 seconds auto-hide
     }
-  }, [isFullscreen, isScrubbing, settings.hideControlsTimeoutMs]);
+  }, [isPlayerFullscreen, isScrubbing]);
 
   useEffect(() => {
-    if (isFullscreen) {
+    if (isPlayerFullscreen) {
       resetInactivityTimer();
     } else {
       if (inactivityTimerRef.current) {
@@ -207,39 +210,51 @@ export const App: React.FC = () => {
         inactivityTimerRef.current = null;
       }
     };
-  }, [isFullscreen, resetInactivityTimer]);
+  }, [isPlayerFullscreen, resetInactivityTimer]);
 
-  // Fullscreen Toggling
-  const handleToggleFullscreen = useCallback(async () => {
-    if (!window.nosvedAPI?.toggleFullscreen) return;
-    try {
-      const next = await window.nosvedAPI.toggleFullscreen();
-      setIsFullscreen(next);
-    } catch (err) {
-      console.error('Failed to toggle fullscreen:', err);
+  // Player Fullscreen Cinema Mode Toggling
+  const handleTogglePlayerFullscreen = useCallback(async () => {
+    const next = !isPlayerFullscreen;
+    setIsPlayerFullscreen(next);
+    if (next) {
+      setActiveTab('player');
+      if (window.nosvedAPI?.setFullscreen) {
+        await window.nosvedAPI.setFullscreen(true).catch(console.error);
+      }
+    } else {
+      if (window.nosvedAPI?.setFullscreen) {
+        await window.nosvedAPI.setFullscreen(false).catch(console.error);
+      }
+    }
+  }, [isPlayerFullscreen]);
+
+  const handleExitPlayerFullscreen = useCallback(async () => {
+    setIsPlayerFullscreen(false);
+    if (window.nosvedAPI?.setFullscreen) {
+      await window.nosvedAPI.setFullscreen(false).catch(console.error);
     }
   }, []);
 
-  const handleExitFullscreen = useCallback(async () => {
-    if (!window.nosvedAPI?.setFullscreen) return;
-    try {
-      await window.nosvedAPI.setFullscreen(false);
-      setIsFullscreen(false);
-    } catch (err) {
-      console.error('Failed to exit fullscreen:', err);
-    }
-  }, []);
-
-  // Double-tap & Fullscreen Toggle Debouncing
   const lastFullscreenToggleTimeRef = useRef(0);
-  const triggerFullscreenToggle = useCallback(() => {
+  const triggerPlayerFullscreenToggle = useCallback(() => {
     const now = Date.now();
     if (now - lastFullscreenToggleTimeRef.current < 400) {
       return;
     }
     lastFullscreenToggleTimeRef.current = now;
-    handleToggleFullscreen();
-  }, [handleToggleFullscreen]);
+    handleTogglePlayerFullscreen();
+  }, [handleTogglePlayerFullscreen]);
+
+  // Whole App Window Fullscreen Toggling (F11)
+  const handleToggleAppFullscreen = useCallback(async () => {
+    if (!window.nosvedAPI?.toggleFullscreen) return;
+    try {
+      const next = await window.nosvedAPI.toggleFullscreen();
+      setIsAppFullscreen(next);
+    } catch (err) {
+      console.error('Failed to toggle app window fullscreen:', err);
+    }
+  }, []);
 
   const lastTapTimeRef = useRef(0);
   const handleVideoTapOrClick = useCallback((e: React.MouseEvent | React.TouchEvent) => {
@@ -247,12 +262,12 @@ export const App: React.FC = () => {
     const now = Date.now();
     if (now - lastTapTimeRef.current < 350) {
       e.preventDefault();
-      triggerFullscreenToggle();
+      triggerPlayerFullscreenToggle();
       lastTapTimeRef.current = 0;
     } else {
       lastTapTimeRef.current = now;
     }
-  }, [resetInactivityTimer, triggerFullscreenToggle]);
+  }, [resetInactivityTimer, triggerPlayerFullscreenToggle]);
 
   // Library & Recent Data Fetching
   const refreshLibrary = useCallback(async () => {
@@ -571,7 +586,10 @@ export const App: React.FC = () => {
 
       if (window.nosvedAPI.onFullscreenChange) {
         window.nosvedAPI.onFullscreenChange((fs) => {
-          setIsFullscreen(fs);
+          setIsAppFullscreen(fs);
+          if (!fs) {
+            setIsPlayerFullscreen(false);
+          }
         });
       }
 
@@ -710,7 +728,7 @@ export const App: React.FC = () => {
     if (window.nosvedAPI.onVideoDoubleClicked) {
       cleanups.push(
         window.nosvedAPI.onVideoDoubleClicked(() => {
-          triggerFullscreenToggle();
+          triggerPlayerFullscreenToggle();
         })
       );
     }
@@ -718,7 +736,7 @@ export const App: React.FC = () => {
     return () => {
       cleanups.forEach((c) => c());
     };
-  }, [resetInactivityTimer, updateVideoBounds, triggerFullscreenToggle]);
+  }, [resetInactivityTimer, updateVideoBounds, triggerPlayerFullscreenToggle]);
 
   const isDesktopBridge = typeof window !== 'undefined' && typeof window.nosvedAPI !== 'undefined';
 
@@ -925,19 +943,30 @@ export const App: React.FC = () => {
 
       resetInactivityTimer();
 
-      if (e.code === FULLSCREEN_SHORTCUT_KEY) {
+      if (e.key === 'F11') {
         e.preventDefault();
-        triggerFullscreenToggle();
+        if (isPlayerFullscreen) {
+          setIsPlayerFullscreen(false);
+        }
+        handleToggleAppFullscreen();
+      } else if (e.code === FULLSCREEN_SHORTCUT_KEY) {
+        if (activeTab === 'player' || isPlayerFullscreen || Boolean(playbackStatus.currentFile && playbackStatus.mediaState !== 'idle')) {
+          e.preventDefault();
+          triggerPlayerFullscreenToggle();
+        }
       } else if (e.key === 'Escape') {
         if (resumePrompt) {
           e.preventDefault();
           setResumePrompt(null);
-        } else if (isFullscreen) {
+        } else if (isPlayerFullscreen) {
           e.preventDefault();
-          handleExitFullscreen();
+          handleExitPlayerFullscreen();
+        } else if (isAppFullscreen) {
+          e.preventDefault();
+          window.nosvedAPI?.setFullscreen?.(false);
         }
       } else if (e.code === 'Space') {
-        if (activeTab === 'player' || isFullscreen) {
+        if (activeTab === 'player' || isPlayerFullscreen) {
           e.preventDefault();
           handleTogglePlayPause();
         }
@@ -977,14 +1006,16 @@ export const App: React.FC = () => {
   }, [
     activeTab,
     playbackStatus,
-    isFullscreen,
+    isAppFullscreen,
+    isPlayerFullscreen,
     resumePrompt,
-    handleToggleFullscreen,
-    triggerFullscreenToggle,
-    handleExitFullscreen,
+    handleToggleAppFullscreen,
+    triggerPlayerFullscreenToggle,
+    handleExitPlayerFullscreen,
     handleTogglePlayPause,
     handleToggleMute,
     resetInactivityTimer,
+    settings.seekStepSeconds,
   ]);
 
   const currentPlayingItem =
@@ -997,11 +1028,11 @@ export const App: React.FC = () => {
 
   return (
     <div
-      className={`flex h-full w-full bg-background select-none app-layout ${isFullscreen ? 'fullscreen-active' : ''}`}
+      className={`flex h-full w-full bg-background select-none app-layout ${isPlayerFullscreen ? 'player-fullscreen-active bg-black border-none' : ''}`}
       onMouseMove={resetInactivityTimer}
     >
-      {/* Navigation Rail / Sidebar (Hidden in Fullscreen) */}
-      {!isFullscreen && (
+      {/* Navigation Rail / Sidebar (Hidden in Player Fullscreen) */}
+      {!isPlayerFullscreen && (
         <Navbar
           activeTab={activeTab}
           onSelectTab={setActiveTab}
@@ -1012,8 +1043,8 @@ export const App: React.FC = () => {
       )}
 
       {/* Main Viewport Content */}
-      <main className={`flex-1 flex flex-col h-full overflow-hidden bg-background main-viewport ${isFullscreen ? 'fullscreen-mode' : ''}`}>
-        {!isFullscreen && (
+      <main className={`flex-1 flex flex-col h-full overflow-hidden bg-background main-viewport ${isPlayerFullscreen ? 'player-fullscreen-mode bg-black border-none' : ''}`}>
+        {!isPlayerFullscreen && (
           <header className="h-16 min-h-16 flex items-center justify-between px-8 border-b border-border bg-surface/70 backdrop-blur-md sticky top-0 z-10 viewport-header">
             <div className="flex items-center gap-3">
               <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/25">
@@ -1045,9 +1076,9 @@ export const App: React.FC = () => {
           </header>
         )}
 
-        <section className={`viewport-body ${isFullscreen ? 'fullscreen-body' : ''}`}>
+        <section className={`viewport-body flex-1 min-h-0 w-full flex flex-col overflow-hidden relative ${isPlayerFullscreen ? 'p-0 m-0 max-w-none bg-black border-none' : ''}`}>
           {/* Tab Content: Home Landing View */}
-          {activeTab === 'home' && !isFullscreen && (
+          {activeTab === 'home' && !isPlayerFullscreen && (
             <HomeView
               recentItems={recentItems}
               libraryItems={libraryItems}
@@ -1059,17 +1090,19 @@ export const App: React.FC = () => {
           )}
 
           {/* Tab Content: Now Playing View */}
-          {((activeTab === 'player' && Boolean(playbackStatus.currentFile && playbackStatus.mediaState !== 'idle')) || isFullscreen) && (
+          {((activeTab === 'player' && Boolean(playbackStatus.currentFile && playbackStatus.mediaState !== 'idle')) || isPlayerFullscreen) && (
             <PlayerView
               videoViewportRef={videoViewportRef}
               playbackStatus={playbackStatus}
               activePlaylist={activePlaylist}
               resumePrompt={resumePrompt}
-              isFullscreen={isFullscreen}
+              isFullscreen={isPlayerFullscreen}
               showOverlay={showOverlay}
               isDesktopBridge={isDesktopBridge}
               isScrubbing={isScrubbing}
               scrubPosition={scrubPosition}
+              isTrackModalOpen={isTrackModalOpen}
+              onTrackModalOpenChange={setIsTrackModalOpen}
               onOpenFile={handleOpenFile}
               onTogglePlayPause={handleTogglePlayPause}
               onToggleMute={handleToggleMute}
@@ -1077,7 +1110,7 @@ export const App: React.FC = () => {
               onSeekSliderChange={handleSeekSliderChange}
               onSeekMouseDown={handleSeekMouseDown}
               onCommitSeek={commitSeek}
-              onTriggerFullscreenToggle={triggerFullscreenToggle}
+              onTriggerFullscreenToggle={triggerPlayerFullscreenToggle}
               onPlayNextPlaylistItem={handlePlayNextPlaylistItem}
               onPlayPrevPlaylistItem={handlePlayPrevPlaylistItem}
               onResumePlayback={handleResumePlayback}
@@ -1105,7 +1138,7 @@ export const App: React.FC = () => {
           )}
 
           {/* Tab Content: Media Library View */}
-          {activeTab === 'library' && !isFullscreen && (
+          {activeTab === 'library' && !isPlayerFullscreen && (
             <LibraryView
               libraryItems={libraryItems}
               onImportFiles={handleImportFiles}
@@ -1121,7 +1154,7 @@ export const App: React.FC = () => {
           )}
 
           {/* Tab Content: Playlists View */}
-          {activeTab === 'playlists' && !isFullscreen && (
+          {activeTab === 'playlists' && !isPlayerFullscreen && (
             <PlaylistsView
               playlists={playlists}
               selectedPlaylistId={selectedPlaylistId}
@@ -1148,7 +1181,7 @@ export const App: React.FC = () => {
           )}
 
           {/* Tab Content: Recent Playback View */}
-          {activeTab === 'recent' && !isFullscreen && (
+          {activeTab === 'recent' && !isPlayerFullscreen && (
             <RecentView
               recentItems={recentItems}
               onOpenMedia={openMediaWithResumeCheck}
@@ -1157,7 +1190,7 @@ export const App: React.FC = () => {
           )}
 
           {/* Tab Content: System Settings / Diagnostics View */}
-          {activeTab === 'settings' && !isFullscreen && (
+          {activeTab === 'settings' && !isPlayerFullscreen && (
             <SettingsView
               settings={settings}
               onUpdateSetting={handleUpdateSetting}
@@ -1167,7 +1200,7 @@ export const App: React.FC = () => {
               playbackStatus={playbackStatus}
               nativePoc={nativePoc}
               playerStatus={playerStatus}
-              isFullscreen={isFullscreen}
+              isFullscreen={isAppFullscreen || isPlayerFullscreen}
             />
           )}
 
@@ -1222,7 +1255,7 @@ export const App: React.FC = () => {
         {/* Hovering Playback Island (Bottom Mini Player Pill) */}
         {settings.showHoverIsland &&
           activeTab !== 'player' &&
-          !isFullscreen &&
+          !isPlayerFullscreen &&
           Boolean(playbackStatus.currentFile && playbackStatus.mediaState !== 'idle') && (
             <FloatingIsland
               playbackStatus={playbackStatus}

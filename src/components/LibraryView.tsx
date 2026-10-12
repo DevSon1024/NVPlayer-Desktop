@@ -25,7 +25,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   onOpenAddToPlaylist,
 }) => {
   return (
-    <div className="flex-1 overflow-y-auto p-7 flex flex-col gap-6 max-w-[1400px] mx-auto w-full select-none">
+    <div className="flex-1 min-h-0 h-full overflow-y-auto p-7 flex flex-col gap-6 max-w-[1400px] mx-auto w-full select-none">
       <div className="flex items-center justify-between pb-4 border-b border-border">
         <div className="flex items-center gap-3">
           <Library size={22} className="text-primary" />
