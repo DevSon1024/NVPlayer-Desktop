@@ -40,7 +40,8 @@ export function useFullscreen({
       playbackStatus.mediaState !== 'idle' &&
       playbackStatus.mediaState !== 'error' &&
       (activeTab === 'player' || isPlayerFullscreen) &&
-      !isTrackModalOpen
+      !isTrackModalOpen &&
+      (!isPlayerFullscreen || !resumePrompt)
     );
 
     if (!shouldBeVisible || !videoViewportEl) {
@@ -74,6 +75,7 @@ export function useFullscreen({
     isPlayerFullscreen,
     videoViewportEl,
     isTrackModalOpen,
+    resumePrompt,
   ]);
 
   useEffect(() => {

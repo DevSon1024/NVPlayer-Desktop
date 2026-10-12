@@ -175,6 +175,17 @@ export const App: React.FC = () => {
           e.preventDefault();
           triggerPlayerFullscreenToggle();
         }
+      } else if (e.key === 'Backspace') {
+        if (activeTab === 'player') {
+          e.preventDefault();
+          if (resumePrompt) {
+            setResumePrompt(null);
+          } else if (isPlayerFullscreen) {
+            handleExitPlayerFullscreen();
+          } else {
+            setActiveTab(previousTab || 'home');
+          }
+        }
       } else if (e.key === 'Escape') {
         if (resumePrompt) {
           e.preventDefault();
@@ -269,85 +280,50 @@ export const App: React.FC = () => {
 
       {/* Main Viewport Content */}
       <main className={`flex-1 flex flex-col h-full overflow-hidden bg-background main-viewport ${isPlayerFullscreen ? 'player-fullscreen-mode bg-black border-none' : ''}`}>
-        {!isPlayerFullscreen && (
-          <header
-            className={`flex items-center justify-between border-b border-border bg-surface/70 backdrop-blur-md sticky top-0 z-10 viewport-header transition-all ${
-              activeTab === 'player' ? 'h-11 min-h-11 px-5' : 'h-16 min-h-16 px-8'
-            }`}
-          >
-            {activeTab === 'player' ? (
-              <>
-                <div className="flex items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab(previousTab || 'home')}
-                    className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-surface-muted hover:bg-surface-elevated hover:text-primary text-foreground text-xs font-semibold border border-border transition-colors cursor-pointer"
-                    title="Back to previous screen"
-                  >
-                    <ArrowLeft size={15} />
-                    <span>Back</span>
-                  </button>
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399]" />
-                    <span className="text-xs font-semibold text-foreground tracking-tight">Now Playing</span>
-                  </div>
-                </div>
+        {/* Viewport Top Header: Only shown on Now Playing screen; hidden on all dashboard workspaces */}
+        {!isPlayerFullscreen && activeTab === 'player' && (
+          <header className="flex items-center justify-between border-b border-border bg-surface/70 backdrop-blur-md sticky top-0 z-10 viewport-header h-11 min-h-11 px-5 transition-all">
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setActiveTab(previousTab || 'home')}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-surface-muted hover:bg-surface-elevated hover:text-primary text-foreground text-xs font-semibold border border-border transition-colors cursor-pointer"
+                title="Back to previous screen (Backspace)"
+              >
+                <ArrowLeft size={15} />
+                <span>Back</span>
+              </button>
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/25">
+                <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399]" />
+                <span>Desktop Engine Ready</span>
+              </div>
+            </div>
 
-                {playbackStatus.currentFile && (
-                  <div
-                    className="flex items-center gap-2 px-3 py-1 bg-surface-muted/70 border border-border/80 rounded-full text-foreground text-xs max-w-[520px] shadow-sm"
-                    title={playbackStatus.currentFile}
-                  >
-                    <Film size={13} className="text-primary shrink-0" />
-                    <span className="max-w-[360px] truncate font-medium">
-                      {playbackStatus.currentFile.split(/[/\\]/).pop() || playbackStatus.currentFile}
-                    </span>
-                    {playbackStatus.videoWidth && playbackStatus.videoHeight && (
-                      <span className="font-mono text-[10px] font-semibold px-1.5 py-0.2 bg-primary/15 border border-primary/30 rounded text-primary shrink-0">
-                        {playbackStatus.videoWidth}x{playbackStatus.videoHeight}
-                      </span>
-                    )}
-                  </div>
-                )}
-
-                <span className="font-mono text-[10px] text-muted-foreground bg-surface-elevated px-2 py-0.5 rounded border border-border">
-                  {appInfo ? `${appInfo.platform}-${appInfo.arch}` : 'win32-x64'}
+            {playbackStatus.currentFile && (
+              <div
+                className="flex items-center gap-2 px-3 py-1 bg-surface-muted/70 border border-border/80 rounded-full text-foreground text-xs max-w-[520px] shadow-sm"
+                title={playbackStatus.currentFile}
+              >
+                <Film size={13} className="text-primary shrink-0" />
+                <span className="max-w-[360px] truncate font-medium">
+                  {playbackStatus.currentFile.split(/[/\\]/).pop() || playbackStatus.currentFile}
                 </span>
-              </>
-            ) : (
-              <>
-                <div className="flex items-center gap-3">
-                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/25">
-                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399]" />
-                    <span>Desktop Engine Ready</span>
-                  </div>
-                  <span className="font-mono text-[11px] text-muted-foreground bg-surface-elevated px-2 py-1 rounded-lg border border-border">
-                    {appInfo ? `${appInfo.platform}-${appInfo.arch}` : 'win32-x64'}
+                {playbackStatus.videoWidth && playbackStatus.videoHeight && (
+                  <span className="font-mono text-[10px] font-semibold px-1.5 py-0.2 bg-primary/15 border border-primary/30 rounded text-primary shrink-0">
+                    {playbackStatus.videoWidth}x{playbackStatus.videoHeight}
                   </span>
-                </div>
-
-                {playbackStatus.currentFile && (
-                  <div
-                    className="flex items-center gap-2 px-3 py-1 bg-surface border border-border rounded-full text-primary text-xs max-w-[440px]"
-                    title={playbackStatus.currentFile}
-                  >
-                    <Film size={14} />
-                    <span className="max-w-[280px] truncate font-medium text-foreground">
-                      {playbackStatus.currentFile.split(/[/\\]/).pop() || playbackStatus.currentFile}
-                    </span>
-                    {playbackStatus.videoWidth && playbackStatus.videoHeight && (
-                      <span className="font-mono text-[10px] font-semibold px-1.5 py-0.5 bg-primary/15 border border-primary/30 rounded text-primary">
-                        {playbackStatus.videoWidth}x{playbackStatus.videoHeight}
-                      </span>
-                    )}
-                  </div>
                 )}
-
-                <span className="font-mono text-[11px] text-primary bg-surface-elevated px-2 py-1 rounded-lg border border-border">
-                  v{appInfo?.version || '0.1.0'}
-                </span>
-              </>
+              </div>
             )}
+
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-[10px] text-muted-foreground bg-surface-elevated px-2 py-0.5 rounded border border-border">
+                {appInfo ? `${appInfo.platform}-${appInfo.arch}` : 'win32-x64'}
+              </span>
+              <span className="font-mono text-[10px] text-primary bg-surface-elevated px-2 py-0.5 rounded border border-border">
+                v{appInfo?.version || '0.1.0'}
+              </span>
+            </div>
           </header>
         )}
 
@@ -378,6 +354,12 @@ export const App: React.FC = () => {
               scrubPosition={scrubPosition}
               isTrackModalOpen={isTrackModalOpen}
               onTrackModalOpenChange={setIsTrackModalOpen}
+              onNavigateBack={() => {
+                if (isPlayerFullscreen) {
+                  handleExitPlayerFullscreen();
+                }
+                setActiveTab(previousTab || 'home');
+              }}
               onOpenFile={handleOpenFile}
               onTogglePlayPause={handleTogglePlayPause}
               onToggleMute={handleToggleMute}

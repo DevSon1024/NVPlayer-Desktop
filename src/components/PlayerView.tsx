@@ -50,6 +50,7 @@ interface PlayerViewProps {
   scrubPosition: number | null;
   isTrackModalOpen?: boolean;
   onTrackModalOpenChange?: (open: boolean) => void;
+  onNavigateBack?: () => void;
   onOpenFile: () => void;
   onTogglePlayPause: () => void;
   onToggleMute: () => void;
@@ -83,6 +84,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
   scrubPosition,
   isTrackModalOpen: externalModalOpen,
   onTrackModalOpenChange,
+  onNavigateBack,
   onOpenFile,
   onTogglePlayPause,
   onToggleMute,
@@ -147,19 +149,123 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
     }
   }, [playbackStatus.currentFile, playbackStatus.mediaState, fetchTracks]);
 
-  // Keyboard escape listener for track modal
+  // Comprehensive PlayerView keyboard shortcuts
   useEffect(() => {
-    if (!isTrackModalOpen) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
+    const handlePlayerKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+
+      // 'Escape' -> Close track modal
       if (e.key === 'Escape') {
+        if (isTrackModalOpen) {
+          e.preventDefault();
+          e.stopPropagation();
+          setModalOpen(false);
+          return;
+        }
+      }
+
+      // 'Backspace' -> Navigate back from PlayerView screen
+      if (e.key === 'Backspace') {
         e.preventDefault();
         e.stopPropagation();
-        setModalOpen(false);
+        if (isTrackModalOpen) {
+          setModalOpen(false);
+          return;
+        }
+        if (resumePrompt) {
+          onDismissResumePrompt();
+          return;
+        }
+        if (onNavigateBack) {
+          onNavigateBack();
+        }
+        return;
+      }
+
+      // 'A' / 'KeyA' -> Open / toggle Audio tracks
+      if (e.code === 'KeyA') {
+        e.preventDefault();
+        e.stopPropagation();
+        if (isTrackModalOpen && activeTab === 'audio') {
+          setModalOpen(false);
+        } else {
+          fetchTracks();
+          setActiveTab('audio');
+          setModalOpen(true);
+        }
+        return;
+      }
+
+      // 'S' / 'KeyS' -> Open / toggle Subtitle tracks
+      if (e.code === 'KeyS') {
+        e.preventDefault();
+        e.stopPropagation();
+        if (isTrackModalOpen && activeTab === 'subtitles') {
+          setModalOpen(false);
+        } else {
+          fetchTracks();
+          setActiveTab('subtitles');
+          setModalOpen(true);
+        }
+        return;
+      }
+
+      // 'O' / 'KeyO' -> Open media file dialog
+      if (e.code === 'KeyO') {
+        e.preventDefault();
+        e.stopPropagation();
+        onOpenFile();
+        return;
+      }
+
+      // 'N' / 'KeyN' -> Next item in playlist
+      if (e.code === 'KeyN' && activePlaylist) {
+        e.preventDefault();
+        e.stopPropagation();
+        onPlayNextPlaylistItem();
+        return;
+      }
+
+      // 'P' / 'KeyP' -> Previous item in playlist
+      if (e.code === 'KeyP' && activePlaylist) {
+        e.preventDefault();
+        e.stopPropagation();
+        onPlayPrevPlaylistItem();
+        return;
+      }
+
+      // Digit keys 0-9 -> Jump to position percentage (0% to 90%)
+      if (e.code >= 'Digit0' && e.code <= 'Digit9' && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        if (playbackStatus.duration && playbackStatus.duration > 0) {
+          e.preventDefault();
+          e.stopPropagation();
+          const digit = parseInt(e.code.replace('Digit', ''), 10);
+          const targetSeconds = (playbackStatus.duration * digit) / 10;
+          onCommitSeek(targetSeconds);
+          return;
+        }
       }
     };
-    window.addEventListener('keydown', handleKeyDown, { capture: true });
-    return () => window.removeEventListener('keydown', handleKeyDown, { capture: true });
-  }, [isTrackModalOpen, setModalOpen]);
+
+    window.addEventListener('keydown', handlePlayerKeyDown);
+    return () => window.removeEventListener('keydown', handlePlayerKeyDown);
+  }, [
+    isTrackModalOpen,
+    activeTab,
+    fetchTracks,
+    setModalOpen,
+    onNavigateBack,
+    onOpenFile,
+    activePlaylist,
+    onPlayNextPlaylistItem,
+    onPlayPrevPlaylistItem,
+    playbackStatus.duration,
+    onCommitSeek,
+    resumePrompt,
+    onDismissResumePrompt,
+  ]);
 
   // Audio track selection handler
   const handleSelectAudioTrack = async (trackId: number) => {
@@ -317,6 +423,61 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
         </div>
       )}
 
+      {/* Floating Resume Playback Banner: Placed OUTSIDE player-container so native Win32 HWND never occludes it */}
+      {resumePrompt && (
+        <div
+          className={
+            isFullscreen
+              ? 'fixed top-14 left-1/2 -translate-x-1/2 max-w-xl w-[92%] bg-surface-elevated/95 backdrop-blur-xl border border-border/80 px-5 py-3 rounded-2xl z-50 flex items-center justify-between gap-4 text-foreground shadow-2xl animate-fadeIn'
+              : 'w-full max-w-2xl mx-auto bg-surface-elevated/95 backdrop-blur-xl border border-border/80 px-5 py-3 rounded-2xl z-30 flex items-center justify-between gap-4 text-foreground shadow-xl shrink-0 animate-fadeIn'
+          }
+          role="dialog"
+          aria-modal="true"
+          onClick={(e) => e.stopPropagation()}
+          onDoubleClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-8 h-8 rounded-full bg-primary/15 flex items-center justify-center text-primary shrink-0">
+              <Clock size={16} />
+            </div>
+            <div className="truncate">
+              <h3 className="text-xs font-semibold text-foreground">Resume Playback</h3>
+              <p className="text-[11px] text-muted-foreground truncate">
+                Continue from <strong className="text-foreground">{formatTime(resumePrompt.position)}</strong>
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-primary text-primary-foreground font-semibold text-xs shadow hover:scale-[1.02] active:scale-[0.98] transition cursor-pointer border-none"
+              onClick={onResumePlayback}
+              autoFocus
+            >
+              <Play size={12} />
+              <span>Resume</span>
+            </button>
+            <button
+              type="button"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-surface-muted hover:bg-surface-elevated text-foreground font-medium text-xs border border-border transition cursor-pointer"
+              onClick={onStartFromBeginning}
+            >
+              <RotateCcw size={12} />
+              <span>Restart</span>
+            </button>
+            <button
+              type="button"
+              className="p-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-surface-muted transition cursor-pointer border-none bg-transparent"
+              onClick={onDismissResumePrompt}
+              title="Dismiss (Esc)"
+              aria-label="Dismiss resume prompt"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Native Player Viewing Screen Container */}
       <div
         className={
@@ -366,57 +527,6 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
             </>
           )}
         </div>
-
-        {/* Floating Resume Playback Banner Overlay */}
-        {resumePrompt && (
-          <div
-            className="absolute top-4 left-1/2 -translate-x-1/2 max-w-xl w-[92%] bg-surface-elevated/95 backdrop-blur-xl border border-border/80 px-5 py-3 rounded-2xl z-30 flex items-center justify-between gap-4 text-foreground shadow-2xl animate-fadeIn"
-            role="dialog"
-            aria-modal="true"
-            onClick={(e) => e.stopPropagation()}
-            onDoubleClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="w-8 h-8 rounded-full bg-primary/15 flex items-center justify-center text-primary shrink-0">
-                <Clock size={16} />
-              </div>
-              <div className="truncate">
-                <h3 className="text-xs font-semibold text-foreground">Resume Playback</h3>
-                <p className="text-[11px] text-muted-foreground truncate">
-                  Continue from <strong className="text-foreground">{formatTime(resumePrompt.position)}</strong>
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <button
-                type="button"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-primary text-primary-foreground font-semibold text-xs shadow hover:scale-[1.02] active:scale-[0.98] transition cursor-pointer border-none"
-                onClick={onResumePlayback}
-                autoFocus
-              >
-                <Play size={12} />
-                <span>Resume</span>
-              </button>
-              <button
-                type="button"
-                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-surface-muted hover:bg-surface-elevated text-foreground font-medium text-xs border border-border transition cursor-pointer"
-                onClick={onStartFromBeginning}
-              >
-                <RotateCcw size={12} />
-                <span>Restart</span>
-              </button>
-              <button
-                type="button"
-                className="p-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-surface-muted transition cursor-pointer border-none bg-transparent"
-                onClick={onDismissResumePrompt}
-                title="Dismiss (Esc)"
-                aria-label="Dismiss resume prompt"
-              >
-                <X size={14} />
-              </button>
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Playback Controls: Overlay in fullscreen, separate strip below viewing screen in windowed mode */}
