@@ -58,6 +58,7 @@ This document serves as the absolute source of truth for any AI agent assisting 
 You must actively maintain the project's changelog. After every completed task, error resolution, or feature addition, you must append an entry to the `update_details.md` file.
 
 **Format and Rules for `update_details.md`:**
+
 - Do NOT read or rewrite the whole file every time. Simply append the new data at the very end of the document.
 - Include a Date and Time stamp for the update.
 - Use the following format:
@@ -66,3 +67,4 @@ You must actively maintain the project's changelog. After every completed task, 
   - **Solution:** (Explain how the issue was solved. Maximum 10 lines.)
 - Append exactly `---` on a new line after the update details to close the entry.
 - Do not include any conversational filler in the file.
+- let /scripts in .gitignore
