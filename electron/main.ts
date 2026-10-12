@@ -1,14 +1,29 @@
-import { app, BrowserWindow, dialog, ipcMain, screen, session } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, screen, session, protocol, net } from 'electron';
 import path from 'node:path';
+import fs from 'node:fs';
 import { runMpvProofOfConcept } from './native/mpv-bindings';
 import { NativePlayerService, SUPPORTED_VIDEO_EXTENSIONS } from './native/player-service';
 import { NativeVideoWindow } from './native/video-window';
 import { MediaDatabase } from './database/media-db';
+import { MetadataService } from './native/metadata-service';
+
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: 'nosved-thumb',
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      corsEnabled: true,
+    },
+  },
+]);
 
 // Single active player lifecycle service for the main process
 const playerService = new NativePlayerService();
 const videoWindow = new NativeVideoWindow();
 let mediaDb: MediaDatabase | null = null;
+let metadataService: MetadataService | null = null;
 let lastSavedPositionTime = 0;
 
 // Broadcast playback changes to renderer and persist playback positions
@@ -447,7 +462,10 @@ function registerIpcHandlers(): void {
 
     const selectedPath = result.filePaths[0];
     const status = await playerService.loadMedia(selectedPath);
-    mediaDb?.addOrUpdateMedia(selectedPath);
+    const media = mediaDb?.addOrUpdateMedia(selectedPath);
+    if (media && metadataService) {
+      metadataService.extractForMedia(media).catch(() => {});
+    }
     return { canceled: false, filePath: selectedPath, status };
   });
 
@@ -459,7 +477,10 @@ function registerIpcHandlers(): void {
       throw new Error('Invalid argument: File path must be a non-empty string');
     }
     const status = await playerService.loadMedia(filePath);
-    mediaDb?.addOrUpdateMedia(filePath);
+    const media = mediaDb?.addOrUpdateMedia(filePath);
+    if (media && metadataService) {
+      metadataService.extractForMedia(media).catch(() => {});
+    }
     return status;
   });
 
@@ -627,7 +648,10 @@ function registerIpcHandlers(): void {
       return { canceled: true, importedCount: 0 };
     }
     for (const fp of result.filePaths) {
-      mediaDb?.addOrUpdateMedia(fp);
+      const media = mediaDb?.addOrUpdateMedia(fp);
+      if (media && metadataService) {
+        metadataService.extractForMedia(media).catch(() => {});
+      }
     }
     return { canceled: false, importedCount: result.filePaths.length };
   });
@@ -652,23 +676,153 @@ function registerIpcHandlers(): void {
     const dur = typeof duration === 'number' && Number.isFinite(duration) ? duration : null;
     return mediaDb?.updatePlaybackPosition(filePath, position, dur) ?? false;
   });
+
+  // Phase 9 Playlists IPC handlers
+  ipcMain.handle('playlist:create', (event, name: unknown) => {
+    if (!validateIpcSender(event)) {
+      throw new Error('Unauthorized IPC invocation: Sender validation failed');
+    }
+    if (typeof name !== 'string' || !name.trim()) {
+      throw new Error('Invalid playlist name: Must be a non-empty string');
+    }
+    return mediaDb?.createPlaylist(name.trim()) ?? null;
+  });
+
+  ipcMain.handle('playlist:rename', (event, id: unknown, name: unknown) => {
+    if (!validateIpcSender(event)) {
+      throw new Error('Unauthorized IPC invocation: Sender validation failed');
+    }
+    if (typeof id !== 'string' || !id.trim() || typeof name !== 'string' || !name.trim()) {
+      throw new Error('Invalid playlist rename arguments');
+    }
+    return mediaDb?.renamePlaylist(id.trim(), name.trim()) ?? false;
+  });
+
+  ipcMain.handle('playlist:delete', (event, id: unknown) => {
+    if (!validateIpcSender(event)) {
+      throw new Error('Unauthorized IPC invocation: Sender validation failed');
+    }
+    if (typeof id !== 'string' || !id.trim()) {
+      throw new Error('Invalid playlist id: Must be a string');
+    }
+    return mediaDb?.deletePlaylist(id.trim()) ?? false;
+  });
+
+  ipcMain.handle('playlist:get-all', (event) => {
+    if (!validateIpcSender(event)) {
+      throw new Error('Unauthorized IPC invocation: Sender validation failed');
+    }
+    return mediaDb?.getAllPlaylists() ?? [];
+  });
+
+  ipcMain.handle('playlist:get-details', (event, id: unknown) => {
+    if (!validateIpcSender(event)) {
+      throw new Error('Unauthorized IPC invocation: Sender validation failed');
+    }
+    if (typeof id !== 'string' || !id.trim()) {
+      throw new Error('Invalid playlist id: Must be a string');
+    }
+    return mediaDb?.getPlaylistDetails(id.trim()) ?? null;
+  });
+
+  ipcMain.handle('playlist:add-items', (event, playlistId: unknown, mediaIds: unknown) => {
+    if (!validateIpcSender(event)) {
+      throw new Error('Unauthorized IPC invocation: Sender validation failed');
+    }
+    if (typeof playlistId !== 'string' || !Array.isArray(mediaIds)) {
+      throw new Error('Invalid arguments for playlist:add-items');
+    }
+    const cleanIds = mediaIds.filter((m): m is string => typeof m === 'string');
+    return mediaDb?.addItemsToPlaylist(playlistId, cleanIds) ?? false;
+  });
+
+  ipcMain.handle('playlist:remove-item', (event, playlistId: unknown, mediaId: unknown) => {
+    if (!validateIpcSender(event)) {
+      throw new Error('Unauthorized IPC invocation: Sender validation failed');
+    }
+    if (typeof playlistId !== 'string' || typeof mediaId !== 'string') {
+      throw new Error('Invalid arguments for playlist:remove-item');
+    }
+    return mediaDb?.removeItemFromPlaylist(playlistId, mediaId) ?? false;
+  });
+
+  ipcMain.handle('playlist:reorder-items', (event, playlistId: unknown, mediaIds: unknown) => {
+    if (!validateIpcSender(event)) {
+      throw new Error('Unauthorized IPC invocation: Sender validation failed');
+    }
+    if (typeof playlistId !== 'string' || !Array.isArray(mediaIds)) {
+      throw new Error('Invalid arguments for playlist:reorder-items');
+    }
+    const cleanIds = mediaIds.filter((m): m is string => typeof m === 'string');
+    return mediaDb?.reorderPlaylistItems(playlistId, cleanIds) ?? false;
+  });
+
+  // Phase 9 Metadata & Thumbnail IPC handlers
+  ipcMain.handle('metadata:extract-media', async (event, mediaId: unknown) => {
+    if (!validateIpcSender(event)) {
+      throw new Error('Unauthorized IPC invocation: Sender validation failed');
+    }
+    if (typeof mediaId !== 'string' || !mediaId.trim()) {
+      throw new Error('Invalid argument: mediaId must be a non-empty string');
+    }
+    const media = mediaDb?.getMediaById(mediaId);
+    if (!media) return null;
+    if (metadataService) {
+      await metadataService.extractForMedia(media);
+      return mediaDb?.getMediaById(mediaId) ?? null;
+    }
+    return media;
+  });
+
+  ipcMain.handle('metadata:cleanup-cache', (event) => {
+    if (!validateIpcSender(event)) {
+      throw new Error('Unauthorized IPC invocation: Sender validation failed');
+    }
+    if (!metadataService || !mediaDb) return;
+    const all = mediaDb.getAllMedia();
+    const activeKeys = new Set<string>();
+    for (const m of all) {
+      if (m.thumbnailKey) activeKeys.add(m.thumbnailKey);
+    }
+    metadataService.cleanupOrphanedThumbnails(activeKeys);
+  });
 }
 
 // App lifecycle
 app.whenReady().then(() => {
+  // Register secure nosved-thumb protocol handler
+  protocol.handle('nosved-thumb', (request) => {
+    try {
+      const url = new URL(request.url);
+      const key = (url.hostname || url.pathname.replace(/^\/+/, '')).toLowerCase();
+      if (!/^[a-f0-9]{64}$/.test(key)) {
+        return new Response('Invalid thumbnail key', { status: 400 });
+      }
+      const thumbPath = metadataService?.getThumbnailPath(key);
+      if (!thumbPath || !fs.existsSync(thumbPath)) {
+        return new Response('Thumbnail not found', { status: 404 });
+      }
+      return net.fetch(`file:///${thumbPath.replace(/\\/g, '/')}`);
+    } catch {
+      return new Response('Protocol error', { status: 500 });
+    }
+  });
+
   // Initialize native SQLite media database in userData directory
   try {
-    mediaDb = new MediaDatabase(path.join(app.getPath('userData'), 'nosved_media.db'));
+    const userData = app.getPath('userData');
+    mediaDb = new MediaDatabase(path.join(userData, 'nosved_media.db'));
     mediaDb.init();
+    metadataService = new MetadataService(path.join(userData, 'thumbnails'), mediaDb);
   } catch (err) {
-    console.error('[Main] Failed to initialize media database:', err);
+    console.error('[Main] Failed to initialize media database or metadata service:', err);
   }
 
   // Apply Content Security Policy header on HTTP responses as defense-in-depth
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     const csp = isDev
-      ? "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' ws://localhost:* http://localhost:* ws://127.0.0.1:* http://127.0.0.1:*; base-uri 'self'; form-action 'none'; object-src 'none';"
-      : "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' ws://localhost:* http://localhost:* ws://127.0.0.1:* http://127.0.0.1:*; base-uri 'self'; form-action 'none'; object-src 'none';";
+      ? "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: nosved-thumb:; font-src 'self' data:; connect-src 'self' ws://localhost:* http://localhost:* ws://127.0.0.1:* http://127.0.0.1:*; base-uri 'self'; form-action 'none'; object-src 'none';"
+      : "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: nosved-thumb:; font-src 'self' data:; connect-src 'self' ws://localhost:* http://localhost:* ws://127.0.0.1:* http://127.0.0.1:*; base-uri 'self'; form-action 'none'; object-src 'none';";
 
     callback({
       responseHeaders: {

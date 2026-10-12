@@ -69,6 +69,17 @@ if (fullscreenResult.status !== 0) {
 }
 console.log('[PASS] Fullscreen unit test suite passed successfully.\n');
 
+console.log('[INFO] Running Phase 9 Playlists, Thumbnails & Metadata Unit Tests...');
+const phase9Result = spawnSync(process.execPath, [path.join(rootDir, 'scripts', 'test-phase9-unit.mjs')], {
+  cwd: rootDir,
+  stdio: 'inherit',
+});
+if (phase9Result.status !== 0) {
+  console.error('[FAIL] Phase 9 unit test suite failed!');
+  process.exit(1);
+}
+console.log('[PASS] Phase 9 unit test suite passed successfully.\n');
+
 console.log('[INFO] Running Real Windows x64 Native Playback Smoke Test...');
 const realPlaybackResult = spawnSync(process.execPath, [path.join(rootDir, 'scripts', 'smoke-test-playback.mjs')], {
   cwd: rootDir,

@@ -24,6 +24,27 @@ export interface MediaItem {
   videoWidth?: number | null;
   videoHeight?: number | null;
   isMissing?: boolean;
+  videoCodec?: string | null;
+  audioCodec?: string | null;
+  fps?: number | null;
+  thumbnailKey?: string | null;
+}
+
+export interface Playlist {
+  id: string;
+  name: string;
+  createdAt: number;
+  updatedAt: number;
+  itemCount?: number;
+}
+
+export interface PlaylistItem {
+  id: string;
+  playlistId: string;
+  mediaId: string;
+  sortOrder: number;
+  addedAt: number;
+  media?: MediaItem;
 }
 
 export interface NosvedAPI {
@@ -117,6 +138,18 @@ export interface NosvedAPI {
   importMediaFiles: () => Promise<{ canceled: boolean; importedCount: number }>;
   removeMedia: (id: string) => Promise<boolean>;
   updatePlaybackPosition: (filePath: string, position: number, duration?: number | null) => Promise<boolean>;
+
+  // Phase 9 Playlists & Metadata APIs
+  createPlaylist: (name: string) => Promise<Playlist | null>;
+  renamePlaylist: (id: string, name: string) => Promise<boolean>;
+  deletePlaylist: (id: string) => Promise<boolean>;
+  getPlaylists: () => Promise<Playlist[]>;
+  getPlaylistDetails: (id: string) => Promise<{ playlist: Playlist; items: PlaylistItem[] } | null>;
+  addItemsToPlaylist: (playlistId: string, mediaIds: string[]) => Promise<boolean>;
+  removeItemFromPlaylist: (playlistId: string, mediaId: string) => Promise<boolean>;
+  reorderPlaylistItems: (playlistId: string, mediaIds: string[]) => Promise<boolean>;
+  extractMetadata: (mediaId: string) => Promise<MediaItem | null>;
+  cleanupThumbnails: () => Promise<void>;
 }
 
 declare global {

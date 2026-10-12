@@ -30,6 +30,27 @@ export interface MediaItemPayload {
   videoWidth?: number | null;
   videoHeight?: number | null;
   isMissing?: boolean;
+  videoCodec?: string | null;
+  audioCodec?: string | null;
+  fps?: number | null;
+  thumbnailKey?: string | null;
+}
+
+export interface PlaylistPayload {
+  id: string;
+  name: string;
+  createdAt: number;
+  updatedAt: number;
+  itemCount?: number;
+}
+
+export interface PlaylistItemPayload {
+  id: string;
+  playlistId: string;
+  mediaId: string;
+  sortOrder: number;
+  addedAt: number;
+  media?: MediaItemPayload;
 }
 
 export interface NosvedAPI {
@@ -123,6 +144,18 @@ export interface NosvedAPI {
   importMediaFiles: () => Promise<{ canceled: boolean; importedCount: number }>;
   removeMedia: (id: string) => Promise<boolean>;
   updatePlaybackPosition: (filePath: string, position: number, duration?: number | null) => Promise<boolean>;
+
+  // Phase 9 Playlists & Metadata APIs
+  createPlaylist: (name: string) => Promise<PlaylistPayload | null>;
+  renamePlaylist: (id: string, name: string) => Promise<boolean>;
+  deletePlaylist: (id: string) => Promise<boolean>;
+  getPlaylists: () => Promise<PlaylistPayload[]>;
+  getPlaylistDetails: (id: string) => Promise<{ playlist: PlaylistPayload; items: PlaylistItemPayload[] } | null>;
+  addItemsToPlaylist: (playlistId: string, mediaIds: string[]) => Promise<boolean>;
+  removeItemFromPlaylist: (playlistId: string, mediaId: string) => Promise<boolean>;
+  reorderPlaylistItems: (playlistId: string, mediaIds: string[]) => Promise<boolean>;
+  extractMetadata: (mediaId: string) => Promise<MediaItemPayload | null>;
+  cleanupThumbnails: () => Promise<void>;
 }
 
 const api: NosvedAPI = {
@@ -202,6 +235,18 @@ const api: NosvedAPI = {
   removeMedia: (id: string) => ipcRenderer.invoke('library:remove', id),
   updatePlaybackPosition: (filePath: string, position: number, duration?: number | null) =>
     ipcRenderer.invoke('library:update-position', filePath, position, duration),
+
+  // Phase 9 Playlists & Metadata IPC calls
+  createPlaylist: (name: string) => ipcRenderer.invoke('playlist:create', name),
+  renamePlaylist: (id: string, name: string) => ipcRenderer.invoke('playlist:rename', id, name),
+  deletePlaylist: (id: string) => ipcRenderer.invoke('playlist:delete', id),
+  getPlaylists: () => ipcRenderer.invoke('playlist:get-all'),
+  getPlaylistDetails: (id: string) => ipcRenderer.invoke('playlist:get-details', id),
+  addItemsToPlaylist: (playlistId: string, mediaIds: string[]) => ipcRenderer.invoke('playlist:add-items', playlistId, mediaIds),
+  removeItemFromPlaylist: (playlistId: string, mediaId: string) => ipcRenderer.invoke('playlist:remove-item', playlistId, mediaId),
+  reorderPlaylistItems: (playlistId: string, mediaIds: string[]) => ipcRenderer.invoke('playlist:reorder-items', playlistId, mediaIds),
+  extractMetadata: (mediaId: string) => ipcRenderer.invoke('metadata:extract-media', mediaId),
+  cleanupThumbnails: () => ipcRenderer.invoke('metadata:cleanup-cache'),
 };
 
 contextBridge.exposeInMainWorld('nosvedAPI', api);
