@@ -210,6 +210,18 @@ export class MediaDatabase {
       this.exec(migrationV2);
       this.recordMigration(2);
     }
+
+    if (currentVersion < 3) {
+      const migrationV3 = `
+        CREATE TABLE IF NOT EXISTS app_settings (
+          key TEXT PRIMARY KEY,
+          value TEXT NOT NULL,
+          updated_at INTEGER NOT NULL
+        );
+      `;
+      this.exec(migrationV3);
+      this.recordMigration(3);
+    }
   }
 
   private getCurrentMigrationVersion(): number {
@@ -1048,6 +1060,100 @@ export class MediaDatabase {
       thumbnailKey,
       isMissing,
     };
+  }
+
+  public getSetting(key: string): string | null {
+    if (!this.db || !this.funcs) return null;
+    const stmtPtr: unknown[] = [null];
+    const rc = this.funcs.sqlite3_prepare_v2(
+      this.db,
+      'SELECT value FROM app_settings WHERE key = ?;',
+      -1,
+      stmtPtr,
+      null
+    );
+    if (rc !== SQLITE_OK || !stmtPtr[0]) return null;
+
+    const stmt = stmtPtr[0];
+    this.funcs.sqlite3_bind_text(stmt, 1, key, -1, SQLITE_TRANSIENT);
+
+    let val: string | null = null;
+    if (this.funcs.sqlite3_step(stmt) === SQLITE_ROW) {
+      if (this.funcs.sqlite3_column_type(stmt, 0) !== SQLITE_NULL) {
+        val = this.funcs.sqlite3_column_text(stmt, 0);
+      }
+    }
+    this.funcs.sqlite3_finalize(stmt);
+    return val;
+  }
+
+  public setSetting(key: string, value: string): boolean {
+    if (!this.db || !this.funcs) return false;
+    const stmtPtr: unknown[] = [null];
+    const rc = this.funcs.sqlite3_prepare_v2(
+      this.db,
+      'INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, ?) ' +
+      'ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at;',
+      -1,
+      stmtPtr,
+      null
+    );
+    if (rc !== SQLITE_OK || !stmtPtr[0]) return false;
+
+    const stmt = stmtPtr[0];
+    this.funcs.sqlite3_bind_text(stmt, 1, key, -1, SQLITE_TRANSIENT);
+    this.funcs.sqlite3_bind_text(stmt, 2, value, -1, SQLITE_TRANSIENT);
+    this.funcs.sqlite3_bind_int64(stmt, 3, BigInt(Date.now()));
+
+    const stepRc = this.funcs.sqlite3_step(stmt);
+    this.funcs.sqlite3_finalize(stmt);
+    return stepRc === SQLITE_DONE;
+  }
+
+  public getAllSettings(): Record<string, string> {
+    const settings: Record<string, string> = {};
+    if (!this.db || !this.funcs) return settings;
+
+    const stmtPtr: unknown[] = [null];
+    const rc = this.funcs.sqlite3_prepare_v2(
+      this.db,
+      'SELECT key, value FROM app_settings;',
+      -1,
+      stmtPtr,
+      null
+    );
+    if (rc !== SQLITE_OK || !stmtPtr[0]) return settings;
+
+    const stmt = stmtPtr[0];
+    while (this.funcs.sqlite3_step(stmt) === SQLITE_ROW) {
+      const k = this.funcs.sqlite3_column_text(stmt, 0);
+      const v = this.funcs.sqlite3_column_text(stmt, 1);
+      if (k !== null && v !== null) {
+        settings[k] = v;
+      }
+    }
+    this.funcs.sqlite3_finalize(stmt);
+    return settings;
+  }
+
+  public setAllSettings(settings: Record<string, string>): boolean {
+    if (!this.db || !this.funcs) return false;
+    this.exec('BEGIN TRANSACTION;');
+    try {
+      for (const [k, v] of Object.entries(settings)) {
+        this.setSetting(k, v);
+      }
+      this.exec('COMMIT;');
+      return true;
+    } catch {
+      this.exec('ROLLBACK;');
+      return false;
+    }
+  }
+
+  public resetSettings(): boolean {
+    if (!this.db || !this.funcs) return false;
+    return this.exec('DELETE FROM app_settings;');
   }
 
   public close(): void {

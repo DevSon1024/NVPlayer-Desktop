@@ -150,6 +150,14 @@ export interface NosvedAPI {
   reorderPlaylistItems: (playlistId: string, mediaIds: string[]) => Promise<boolean>;
   extractMetadata: (mediaId: string) => Promise<MediaItem | null>;
   cleanupThumbnails: () => Promise<void>;
+
+  // Settings & Themes
+  getSettings: () => Promise<Record<string, string>>;
+  setSetting: (key: string, value: string) => Promise<boolean>;
+  setAllSettings: (settings: Record<string, string>) => Promise<boolean>;
+  resetSettings: () => Promise<boolean>;
+  exportSettingsFile: (settingsJson: string) => Promise<{ canceled: boolean; filePath?: string; error?: string }>;
+  importSettingsFile: () => Promise<{ canceled: boolean; data?: string; error?: string }>;
 }
 
 declare global {

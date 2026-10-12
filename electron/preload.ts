@@ -156,6 +156,14 @@ export interface NosvedAPI {
   reorderPlaylistItems: (playlistId: string, mediaIds: string[]) => Promise<boolean>;
   extractMetadata: (mediaId: string) => Promise<MediaItemPayload | null>;
   cleanupThumbnails: () => Promise<void>;
+
+  // Settings & Themes
+  getSettings: () => Promise<Record<string, string>>;
+  setSetting: (key: string, value: string) => Promise<boolean>;
+  setAllSettings: (settings: Record<string, string>) => Promise<boolean>;
+  resetSettings: () => Promise<boolean>;
+  exportSettingsFile: (settingsJson: string) => Promise<{ canceled: boolean; filePath?: string; error?: string }>;
+  importSettingsFile: () => Promise<{ canceled: boolean; data?: string; error?: string }>;
 }
 
 const api: NosvedAPI = {
@@ -247,6 +255,14 @@ const api: NosvedAPI = {
   reorderPlaylistItems: (playlistId: string, mediaIds: string[]) => ipcRenderer.invoke('playlist:reorder-items', playlistId, mediaIds),
   extractMetadata: (mediaId: string) => ipcRenderer.invoke('metadata:extract-media', mediaId),
   cleanupThumbnails: () => ipcRenderer.invoke('metadata:cleanup-cache'),
+
+  // Settings & Themes
+  getSettings: () => ipcRenderer.invoke('settings:get-all'),
+  setSetting: (key: string, value: string) => ipcRenderer.invoke('settings:set', key, value),
+  setAllSettings: (settings: Record<string, string>) => ipcRenderer.invoke('settings:set-all', settings),
+  resetSettings: () => ipcRenderer.invoke('settings:reset'),
+  exportSettingsFile: (settingsJson: string) => ipcRenderer.invoke('settings:export-file', settingsJson),
+  importSettingsFile: () => ipcRenderer.invoke('settings:import-file'),
 };
 
 contextBridge.exposeInMainWorld('nosvedAPI', api);

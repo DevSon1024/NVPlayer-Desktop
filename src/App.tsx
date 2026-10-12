@@ -11,6 +11,13 @@ import { PlaylistsView } from './components/PlaylistsView';
 import { RecentView } from './components/RecentView';
 import { SettingsView } from './components/SettingsView';
 import {
+  AppSettings,
+  DEFAULT_SETTINGS,
+  parseSettingsFromRaw,
+  serializeSettingsToRaw,
+  applyThemeToDom,
+} from './types/settings';
+import {
   NewPlaylistModal,
   RenamePlaylistModal,
   DeletePlaylistModal,
@@ -33,7 +40,6 @@ interface SecurityState {
 }
 
 const FULLSCREEN_SHORTCUT_KEY = 'KeyF';
-const INACTIVITY_TIMEOUT_MS = 5000;
 
 export const App: React.FC = () => {
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
@@ -52,6 +58,7 @@ export const App: React.FC = () => {
     videoHeight: null,
   });
   const [activeTab, setActiveTab] = useState<TabType>('home');
+  const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
 
   // Fullscreen & Overlay State
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -180,9 +187,9 @@ export const App: React.FC = () => {
         if (!isScrubbing && !isInteractingWithControlsRef.current && !isControlsFocusedRef.current) {
           setShowOverlay(false);
         }
-      }, INACTIVITY_TIMEOUT_MS);
+      }, settings.hideControlsTimeoutMs);
     }
-  }, [isFullscreen, isScrubbing]);
+  }, [isFullscreen, isScrubbing, settings.hideControlsTimeoutMs]);
 
   useEffect(() => {
     if (isFullscreen) {
@@ -567,6 +574,91 @@ export const App: React.FC = () => {
           setIsFullscreen(fs);
         });
       }
+
+      if (window.nosvedAPI.getSettings) {
+        window.nosvedAPI
+          .getSettings()
+          .then((raw) => {
+            const parsed = parseSettingsFromRaw(raw);
+            setSettings(parsed);
+            applyThemeToDom(
+              parsed.themeMode,
+              parsed.accentPalette,
+              parsed.highContrast,
+              parsed.compactUi
+            );
+          })
+          .catch(console.error);
+      }
+    }
+  }, []);
+
+  // Settings Actions
+  const handleUpdateSetting = useCallback(
+    async <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
+      setSettings((prev) => {
+        const next = { ...prev, [key]: value };
+        applyThemeToDom(
+          next.themeMode,
+          next.accentPalette,
+          next.highContrast,
+          next.compactUi
+        );
+        return next;
+      });
+      if (window.nosvedAPI?.setSetting) {
+        await window.nosvedAPI.setSetting(String(key), String(value)).catch(console.error);
+      }
+    },
+    []
+  );
+
+  const handleResetSettings = useCallback(async () => {
+    setSettings(DEFAULT_SETTINGS);
+    applyThemeToDom(
+      DEFAULT_SETTINGS.themeMode,
+      DEFAULT_SETTINGS.accentPalette,
+      DEFAULT_SETTINGS.highContrast,
+      DEFAULT_SETTINGS.compactUi
+    );
+    if (window.nosvedAPI?.resetSettings) {
+      await window.nosvedAPI.resetSettings().catch(console.error);
+    }
+  }, []);
+
+  const handleExportSettings = useCallback(async () => {
+    if (!window.nosvedAPI?.exportSettingsFile) return;
+    const payload = JSON.stringify(
+      {
+        app: 'Nosved Player Desktop',
+        version: appInfo?.version || '0.1.0',
+        exportedAt: new Date().toISOString(),
+        settings,
+      },
+      null,
+      2
+    );
+    const res = await window.nosvedAPI.exportSettingsFile(payload);
+    if (res.error) throw new Error(res.error);
+  }, [appInfo?.version, settings]);
+
+  const handleImportSettings = useCallback(async () => {
+    if (!window.nosvedAPI?.importSettingsFile) return;
+    const res = await window.nosvedAPI.importSettingsFile();
+    if (res.canceled) return;
+    if (res.error || !res.data) throw new Error(res.error || 'Failed to read settings file');
+    const parsedJson = JSON.parse(res.data);
+    const raw = (parsedJson.settings as Record<string, string>) || (parsedJson as Record<string, string>);
+    const newSettings = parseSettingsFromRaw(raw);
+    setSettings(newSettings);
+    applyThemeToDom(
+      newSettings.themeMode,
+      newSettings.accentPalette,
+      newSettings.highContrast,
+      newSettings.compactUi
+    );
+    if (window.nosvedAPI.setAllSettings) {
+      await window.nosvedAPI.setAllSettings(serializeSettingsToRaw(newSettings));
     }
   }, []);
 
@@ -629,6 +721,7 @@ export const App: React.FC = () => {
       setActiveTab('player');
 
       if (
+        settings.resumePlaybackPrompt &&
         existing &&
         existing.lastPosition &&
         existing.lastPosition > 5 &&
@@ -645,7 +738,7 @@ export const App: React.FC = () => {
     } catch (err) {
       console.error('Failed to open media:', err);
     }
-  }, []);
+  }, [settings.resumePlaybackPrompt]);
 
   const handleResumePlayback = async () => {
     if (!resumePrompt || !window.nosvedAPI) return;
@@ -827,14 +920,16 @@ export const App: React.FC = () => {
       } else if (e.code === 'ArrowLeft') {
         e.preventDefault();
         if (playbackStatus.currentFile && playbackStatus.position !== null) {
-          const newPos = Math.max(0, playbackStatus.position - 5);
+          const step = settings.seekStepSeconds || 10;
+          const newPos = Math.max(0, playbackStatus.position - step);
           window.nosvedAPI?.seek(newPos).then(setPlaybackStatus).catch(console.error);
         }
       } else if (e.code === 'ArrowRight') {
         e.preventDefault();
         if (playbackStatus.currentFile && playbackStatus.position !== null) {
-          const max = playbackStatus.duration ?? playbackStatus.position + 5;
-          const newPos = Math.min(max, playbackStatus.position + 5);
+          const step = settings.seekStepSeconds || 10;
+          const max = playbackStatus.duration ?? playbackStatus.position + step;
+          const newPos = Math.min(max, playbackStatus.position + step);
           window.nosvedAPI?.seek(newPos).then(setPlaybackStatus).catch(console.error);
         }
       } else if (e.code === 'ArrowUp') {
@@ -1040,6 +1135,11 @@ export const App: React.FC = () => {
           {/* Tab Content: System Settings / Diagnostics View */}
           {activeTab === 'settings' && !isFullscreen && (
             <SettingsView
+              settings={settings}
+              onUpdateSetting={handleUpdateSetting}
+              onResetSettings={handleResetSettings}
+              onExportSettings={handleExportSettings}
+              onImportSettings={handleImportSettings}
               playbackStatus={playbackStatus}
               nativePoc={nativePoc}
               playerStatus={playerStatus}
@@ -1096,7 +1196,8 @@ export const App: React.FC = () => {
         </section>
 
         {/* Hovering Playback Island (Bottom Mini Player Pill) */}
-        {activeTab !== 'player' &&
+        {settings.showHoverIsland &&
+          activeTab !== 'player' &&
           !isFullscreen &&
           Boolean(playbackStatus.currentFile && playbackStatus.mediaState !== 'idle') && (
             <FloatingIsland

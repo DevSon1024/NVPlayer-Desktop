@@ -17,6 +17,7 @@ import { registerWindowHandlers } from './ipc/window-handlers';
 import { registerLibraryHandlers } from './ipc/library-handlers';
 import { registerPlaylistHandlers } from './ipc/playlist-handlers';
 import { registerMetadataHandlers } from './ipc/metadata-handlers';
+import { registerSettingsHandlers } from './ipc/settings-handlers';
 
 // 1. Must register privileged schemes before app ready
 registerThumbnailScheme();
@@ -293,6 +294,7 @@ function registerAllIpcHandlers(): void {
   registerLibraryHandlers(handlerCtx);
   registerPlaylistHandlers(handlerCtx);
   registerMetadataHandlers(handlerCtx);
+  registerSettingsHandlers(handlerCtx);
 }
 
 // App lifecycle
