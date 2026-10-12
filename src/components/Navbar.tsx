@@ -28,27 +28,36 @@ export const Navbar: React.FC<NavbarProps> = ({
   isElectron,
   hasActiveMedia = false,
 }) => {
+  const getNavBtnClass = (isActive: boolean) =>
+    `w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-[13px] font-medium transition-colors text-left outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-pointer border-none bg-transparent ${
+      isActive
+        ? 'bg-primary-container text-on-primary-container font-semibold shadow-sm'
+        : 'text-muted-foreground hover:bg-surface-elevated hover:text-foreground'
+    }`;
+
   return (
-    <aside className="app-sidebar">
-      <div className="brand-section">
-        <div className="brand-logo-badge">
+    <aside className="w-[260px] min-w-[260px] max-md:w-[200px] max-md:min-w-[200px] bg-surface border-r border-border flex flex-col p-5 gap-6 select-none shrink-0 h-full">
+      <div className="flex items-center gap-3 px-2 py-1">
+        <div className="w-10 h-10 rounded-xl bg-primary-container text-primary flex items-center justify-center shadow-md border border-primary/20 shrink-0">
           <Film size={22} />
         </div>
-        <div className="brand-meta">
-          <span className="brand-title">Nosved Player</span>
-          <span className="brand-subtitle">Desktop Core</span>
+        <div className="flex flex-col min-w-0">
+          <span className="brand-title text-base font-semibold tracking-tight text-foreground truncate">Nosved Player</span>
+          <span className="text-[11px] font-medium text-primary uppercase tracking-wider truncate">Desktop Core</span>
         </div>
       </div>
 
-      <nav className="nav-group">
-        <span className="nav-label">Media Workspaces</span>
+      <nav className="flex flex-col gap-1 flex-1">
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground px-3 pt-2 pb-1">
+          Media Workspaces
+        </span>
 
         <button
           type="button"
-          className={`nav-item ${activeTab === 'home' ? 'active' : ''}`}
+          className={getNavBtnClass(activeTab === 'home')}
           onClick={() => onSelectTab('home')}
         >
-          <div className="nav-item-content">
+          <div className="flex items-center gap-3">
             <Home size={18} />
             <span>Home</span>
           </div>
@@ -57,10 +66,10 @@ export const Navbar: React.FC<NavbarProps> = ({
         {hasActiveMedia && (
           <button
             type="button"
-            className={`nav-item ${activeTab === 'player' ? 'active' : ''}`}
+            className={getNavBtnClass(activeTab === 'player')}
             onClick={() => onSelectTab('player')}
           >
-            <div className="nav-item-content">
+            <div className="flex items-center gap-3">
               <PlaySquare size={18} />
               <span>Now Playing</span>
             </div>
@@ -69,10 +78,10 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         <button
           type="button"
-          className={`nav-item ${activeTab === 'library' ? 'active' : ''}`}
+          className={getNavBtnClass(activeTab === 'library')}
           onClick={() => onSelectTab('library')}
         >
-          <div className="nav-item-content">
+          <div className="flex items-center gap-3">
             <Library size={18} />
             <span>Library</span>
           </div>
@@ -80,10 +89,10 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         <button
           type="button"
-          className={`nav-item ${activeTab === 'playlists' ? 'active' : ''}`}
+          className={getNavBtnClass(activeTab === 'playlists')}
           onClick={() => onSelectTab('playlists')}
         >
-          <div className="nav-item-content">
+          <div className="flex items-center gap-3">
             <ListMusic size={18} />
             <span>Playlists</span>
           </div>
@@ -91,23 +100,25 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         <button
           type="button"
-          className={`nav-item ${activeTab === 'recent' ? 'active' : ''}`}
+          className={getNavBtnClass(activeTab === 'recent')}
           onClick={() => onSelectTab('recent')}
         >
-          <div className="nav-item-content">
+          <div className="flex items-center gap-3">
             <History size={18} />
             <span>Recent</span>
           </div>
         </button>
 
-        <span className="nav-label" style={{ marginTop: '12px' }}>System</span>
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground px-3 pt-4 pb-1">
+          System
+        </span>
 
         <button
           type="button"
-          className={`nav-item ${activeTab === 'settings' ? 'active' : ''}`}
+          className={getNavBtnClass(activeTab === 'settings')}
           onClick={() => onSelectTab('settings')}
         >
-          <div className="nav-item-content">
+          <div className="flex items-center gap-3">
             <Settings size={18} />
             <span>Settings</span>
           </div>
@@ -115,19 +126,17 @@ export const Navbar: React.FC<NavbarProps> = ({
       </nav>
 
       {/* Security Audit Badge in Sidebar */}
-      <div className="sidebar-footer">
-        <div className={`security-status-indicator ${isIsolated ? 'secure' : 'warning'}`}>
-          <div className="status-indicator-icon">
-            {isIsolated ? <ShieldCheck size={16} /> : <AlertCircle size={16} />}
-          </div>
-          <div className="status-indicator-info">
-            <span className="status-title">
-              {isIsolated ? 'Protected Sandbox' : 'Sandbox Degraded'}
-            </span>
-            <span className="status-subtitle">
-              {isElectron ? 'Isolated Runtime' : 'Browser Preview'}
-            </span>
-          </div>
+      <div className="mt-auto rounded-xl p-3 bg-surface-muted border border-border flex items-center gap-2.5">
+        <div className={isIsolated ? 'text-success shrink-0' : 'text-amber-400 shrink-0'}>
+          {isIsolated ? <ShieldCheck size={18} /> : <AlertCircle size={18} />}
+        </div>
+        <div className="flex flex-col min-w-0">
+          <span className="text-[11px] font-semibold text-foreground truncate">
+            {isIsolated ? 'Protected Sandbox' : 'Sandbox Degraded'}
+          </span>
+          <span className="text-[10px] text-muted-foreground font-mono truncate">
+            {isElectron ? 'Isolated Runtime' : 'Browser Preview'}
+          </span>
         </div>
       </div>
     </aside>

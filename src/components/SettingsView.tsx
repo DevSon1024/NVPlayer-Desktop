@@ -38,6 +38,31 @@ interface SettingsViewProps {
 
 type SettingsSection = 'appearance' | 'player' | 'engine' | 'subtitles' | 'backup' | 'diagnostics';
 
+interface ToggleRowProps {
+  label: string;
+  desc: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}
+
+const SettingToggleRow: React.FC<ToggleRowProps> = ({ label, desc, checked, onChange }) => (
+  <div className="flex items-center justify-between gap-4 py-2.5 border-b border-border/40 last:border-none">
+    <div className="flex flex-col gap-0.5">
+      <span className="text-xs font-medium text-foreground">{label}</span>
+      <span className="text-[11px] text-muted-foreground">{desc}</span>
+    </div>
+    <label className="relative inline-flex items-center cursor-pointer select-none shrink-0">
+      <input
+        type="checkbox"
+        className="sr-only peer"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+      />
+      <div className="w-10 h-5 bg-surface-muted border border-border peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2.5px] after:left-[2.5px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
+    </label>
+  </div>
+);
+
 export const SettingsView: React.FC<SettingsViewProps> = ({
   settings,
   onUpdateSetting,
@@ -79,18 +104,24 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   };
 
   return (
-    <div className="settings-container">
+    <div className="flex-1 flex h-full w-full overflow-hidden bg-background select-none">
       {/* Settings Navigation Sidebar */}
-      <aside className="settings-nav-sidebar">
-        <div className="settings-sidebar-header">
-          <h2 className="settings-title">Preferences</h2>
-          <span className="settings-subtitle">Persistent Configuration</span>
+      <aside className="w-[250px] min-w-[250px] bg-surface border-r border-border flex flex-col p-6 gap-5 overflow-y-auto shrink-0">
+        <div className="flex flex-col gap-1 px-2">
+          <h2 className="text-xl font-bold text-foreground tracking-tight">Preferences</h2>
+          <span className="text-[11px] font-semibold text-primary tracking-wider uppercase">
+            Persistent Configuration
+          </span>
         </div>
 
-        <nav className="settings-nav-list">
+        <nav className="flex flex-col gap-1.5">
           <button
             type="button"
-            className={`settings-nav-item ${activeSection === 'appearance' ? 'active' : ''}`}
+            className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition cursor-pointer border-none text-left w-full ${
+              activeSection === 'appearance'
+                ? 'bg-primary-container text-on-primary-container font-semibold shadow-sm'
+                : 'bg-transparent text-muted-foreground hover:bg-surface-elevated hover:text-foreground'
+            }`}
             onClick={() => setActiveSection('appearance')}
           >
             <Palette size={18} />
@@ -99,7 +130,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
           <button
             type="button"
-            className={`settings-nav-item ${activeSection === 'player' ? 'active' : ''}`}
+            className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition cursor-pointer border-none text-left w-full ${
+              activeSection === 'player'
+                ? 'bg-primary-container text-on-primary-container font-semibold shadow-sm'
+                : 'bg-transparent text-muted-foreground hover:bg-surface-elevated hover:text-foreground'
+            }`}
             onClick={() => setActiveSection('player')}
           >
             <PlaySquare size={18} />
@@ -108,7 +143,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
           <button
             type="button"
-            className={`settings-nav-item ${activeSection === 'engine' ? 'active' : ''}`}
+            className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition cursor-pointer border-none text-left w-full ${
+              activeSection === 'engine'
+                ? 'bg-primary-container text-on-primary-container font-semibold shadow-sm'
+                : 'bg-transparent text-muted-foreground hover:bg-surface-elevated hover:text-foreground'
+            }`}
             onClick={() => setActiveSection('engine')}
           >
             <Cpu size={18} />
@@ -117,7 +156,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
           <button
             type="button"
-            className={`settings-nav-item ${activeSection === 'subtitles' ? 'active' : ''}`}
+            className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition cursor-pointer border-none text-left w-full ${
+              activeSection === 'subtitles'
+                ? 'bg-primary-container text-on-primary-container font-semibold shadow-sm'
+                : 'bg-transparent text-muted-foreground hover:bg-surface-elevated hover:text-foreground'
+            }`}
             onClick={() => setActiveSection('subtitles')}
           >
             <Subtitles size={18} />
@@ -126,7 +169,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
           <button
             type="button"
-            className={`settings-nav-item ${activeSection === 'backup' ? 'active' : ''}`}
+            className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition cursor-pointer border-none text-left w-full ${
+              activeSection === 'backup'
+                ? 'bg-primary-container text-on-primary-container font-semibold shadow-sm'
+                : 'bg-transparent text-muted-foreground hover:bg-surface-elevated hover:text-foreground'
+            }`}
             onClick={() => setActiveSection('backup')}
           >
             <Download size={18} />
@@ -135,7 +182,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
           <button
             type="button"
-            className={`settings-nav-item ${activeSection === 'diagnostics' ? 'active' : ''}`}
+            className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition cursor-pointer border-none text-left w-full ${
+              activeSection === 'diagnostics'
+                ? 'bg-primary-container text-on-primary-container font-semibold shadow-sm'
+                : 'bg-transparent text-muted-foreground hover:bg-surface-elevated hover:text-foreground'
+            }`}
             onClick={() => setActiveSection('diagnostics')}
           >
             <ShieldCheck size={18} />
@@ -145,9 +196,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       </aside>
 
       {/* Settings Content Area */}
-      <main className="settings-content-pane">
+      <main className="flex-1 overflow-y-auto px-10 py-8 pb-24 flex flex-col gap-6 relative">
         {feedbackMessage && (
-          <div className={`settings-feedback-banner ${feedbackMessage.type}`} role="alert">
+          <div
+            className={`flex items-center gap-2.5 px-4 py-3 rounded-xl text-sm font-medium max-w-[860px] animate-fadeIn ${
+              feedbackMessage.type === 'success'
+                ? 'bg-emerald-500/15 border border-emerald-500/35 text-emerald-400'
+                : 'bg-rose-500/15 border border-rose-500/35 text-rose-400'
+            }`}
+            role="alert"
+          >
             {feedbackMessage.type === 'success' ? (
               <CheckCircle2 size={16} />
             ) : (
@@ -159,23 +217,29 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
         {/* 1. Appearance & Themes */}
         {activeSection === 'appearance' && (
-          <div className="settings-section">
-            <div className="section-header">
-              <h3 className="section-heading">Appearance & Themes</h3>
-              <p className="section-description">
+          <div className="flex flex-col gap-5 max-w-[860px]">
+            <div className="flex flex-col gap-1.5 pb-3 border-b border-border">
+              <h3 className="text-xl font-bold text-foreground">Appearance & Themes</h3>
+              <p className="text-xs text-muted-foreground leading-relaxed">
                 Customize app styling, dark mode, and color palettes inspired by Seal Android and Material Expressive.
               </p>
             </div>
 
             {/* Theme Mode Toggle (Dark / Light / System) */}
-            <div className="settings-card">
-              <h4 className="card-heading">Theme Mode</h4>
-              <p className="card-subheading">Select color scheme mode or follow Windows system default.</p>
+            <div className="bg-surface border border-border rounded-2xl p-6 flex flex-col gap-4 shadow-sm">
+              <h4 className="text-sm font-semibold text-foreground">Theme Mode</h4>
+              <p className="text-xs text-muted-foreground -mt-2 leading-relaxed">
+                Select color scheme mode or follow Windows system default.
+              </p>
 
-              <div className="theme-mode-grid">
+              <div className="grid grid-cols-3 gap-3">
                 <button
                   type="button"
-                  className={`theme-mode-btn ${settings.themeMode === 'dark' ? 'active' : ''}`}
+                  className={`flex items-center justify-center gap-2.5 p-3.5 rounded-xl border text-xs font-semibold cursor-pointer transition ${
+                    settings.themeMode === 'dark'
+                      ? 'bg-primary-container border-primary text-on-primary-container shadow-sm'
+                      : 'bg-surface-elevated border-border text-muted-foreground hover:border-primary hover:text-foreground'
+                  }`}
                   onClick={() => onUpdateSetting('themeMode', 'dark')}
                 >
                   <Moon size={18} />
@@ -184,7 +248,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
                 <button
                   type="button"
-                  className={`theme-mode-btn ${settings.themeMode === 'light' ? 'active' : ''}`}
+                  className={`flex items-center justify-center gap-2.5 p-3.5 rounded-xl border text-xs font-semibold cursor-pointer transition ${
+                    settings.themeMode === 'light'
+                      ? 'bg-primary-container border-primary text-on-primary-container shadow-sm'
+                      : 'bg-surface-elevated border-border text-muted-foreground hover:border-primary hover:text-foreground'
+                  }`}
                   onClick={() => onUpdateSetting('themeMode', 'light')}
                 >
                   <Sun size={18} />
@@ -193,7 +261,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
                 <button
                   type="button"
-                  className={`theme-mode-btn ${settings.themeMode === 'system' ? 'active' : ''}`}
+                  className={`flex items-center justify-center gap-2.5 p-3.5 rounded-xl border text-xs font-semibold cursor-pointer transition ${
+                    settings.themeMode === 'system'
+                      ? 'bg-primary-container border-primary text-on-primary-container shadow-sm'
+                      : 'bg-surface-elevated border-border text-muted-foreground hover:border-primary hover:text-foreground'
+                  }`}
                   onClick={() => onUpdateSetting('themeMode', 'system')}
                 >
                   <Laptop size={18} />
@@ -203,52 +275,61 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </div>
 
             {/* Custom Palettes Grid */}
-            <div className="settings-card">
-              <div className="card-title-row">
+            <div className="bg-surface border border-border rounded-2xl p-6 flex flex-col gap-4 shadow-sm">
+              <div className="flex items-center justify-between">
                 <div>
-                  <h4 className="card-heading">Accent Palettes</h4>
-                  <p className="card-subheading">Choose custom design colors and tints for buttons, highlights, and surfaces.</p>
+                  <h4 className="text-sm font-semibold text-foreground">Accent Palettes</h4>
+                  <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+                    Choose custom design colors and tints for buttons, highlights, and surfaces.
+                  </p>
                 </div>
-                <span className="card-pill">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-primary/10 text-primary border border-primary/20">
                   <Sparkles size={13} />
                   <span>{AVAILABLE_PALETTES.length} Palettes</span>
                 </span>
               </div>
 
-              <div className="palettes-grid">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3.5">
                 {AVAILABLE_PALETTES.map((pal) => {
                   const isSelected = settings.accentPalette === pal.id;
                   return (
                     <div
                       key={pal.id}
-                      className={`palette-card ${isSelected ? 'selected' : ''}`}
+                      className={`flex items-start gap-3 p-3.5 rounded-xl border cursor-pointer transition select-none ${
+                        isSelected
+                          ? 'border-primary ring-1 ring-primary bg-surface-elevated shadow-md'
+                          : 'border-border bg-surface-elevated/50 hover:border-primary/50 hover:bg-surface-elevated'
+                      }`}
                       onClick={() => onUpdateSetting('accentPalette', pal.id as AccentPalette)}
                       role="button"
                       tabIndex={0}
                       onKeyDown={(e) => e.key === 'Enter' && onUpdateSetting('accentPalette', pal.id as AccentPalette)}
                     >
-                      <div className="palette-swatch" style={{ backgroundColor: pal.surfaceColor }}>
+                      <div
+                        className="w-10 h-10 rounded-xl relative shrink-0 flex items-center justify-center border border-white/10 shadow-sm"
+                        style={{ backgroundColor: pal.surfaceColor }}
+                      >
                         <div
-                          className="swatch-accent-dot"
+                          className="w-3.5 h-3.5 rounded-full absolute top-1.5 left-1.5 border border-black/20"
                           style={{ backgroundColor: pal.accentColor }}
                         />
                         <div
-                          className="swatch-secondary-dot"
+                          className="w-3.5 h-3.5 rounded-full absolute bottom-1.5 right-1.5 border border-black/20"
                           style={{ backgroundColor: pal.secondaryColor }}
                         />
                         {isSelected && (
-                          <div className="swatch-check">
-                            <Check size={14} />
+                          <div className="absolute inset-0 flex items-center justify-center text-primary-foreground drop-shadow">
+                            <Check size={16} />
                           </div>
                         )}
                       </div>
 
-                      <div className="palette-info">
-                        <div className="palette-name-row">
-                          <span className="palette-name">{pal.name}</span>
-                          <span className="palette-source">{pal.sourceInspiration}</span>
+                      <div className="flex flex-col min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-1">
+                          <span className="text-xs font-semibold text-foreground truncate">{pal.name}</span>
+                          <span className="text-[10px] text-primary/80 font-mono shrink-0">{pal.sourceInspiration}</span>
                         </div>
-                        <p className="palette-desc">{pal.description}</p>
+                        <p className="text-[11px] text-muted-foreground line-clamp-2 mt-0.5 leading-snug">{pal.description}</p>
                       </div>
                     </div>
                   );
@@ -257,128 +338,84 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </div>
 
             {/* UI Contrast & Density */}
-            <div className="settings-card">
-              <h4 className="card-heading">Visual Accessibility</h4>
+            <div className="bg-surface border border-border rounded-2xl p-6 flex flex-col gap-4 shadow-sm">
+              <h4 className="text-sm font-semibold text-foreground">Visual Accessibility</h4>
 
-              <div className="setting-toggle-row">
-                <div className="toggle-label-group">
-                  <span className="toggle-label">High Contrast Borders</span>
-                  <span className="toggle-desc">Strengthen surface outlines and element boundaries</span>
-                </div>
-                <label className="toggle-switch">
-                  <input
-                    type="checkbox"
-                    checked={settings.highContrast}
-                    onChange={(e) => onUpdateSetting('highContrast', e.target.checked)}
-                  />
-                  <span className="toggle-slider" />
-                </label>
-              </div>
+              <SettingToggleRow
+                label="High Contrast Borders"
+                desc="Strengthen surface outlines and element boundaries"
+                checked={settings.highContrast}
+                onChange={(checked) => onUpdateSetting('highContrast', checked)}
+              />
 
-              <div className="setting-toggle-row">
-                <div className="toggle-label-group">
-                  <span className="toggle-label">Compact Density</span>
-                  <span className="toggle-desc">Reduce layout paddings for maximum information density</span>
-                </div>
-                <label className="toggle-switch">
-                  <input
-                    type="checkbox"
-                    checked={settings.compactUi}
-                    onChange={(e) => onUpdateSetting('compactUi', e.target.checked)}
-                  />
-                  <span className="toggle-slider" />
-                </label>
-              </div>
+              <SettingToggleRow
+                label="Compact Density"
+                desc="Reduce layout paddings for maximum information density"
+                checked={settings.compactUi}
+                onChange={(checked) => onUpdateSetting('compactUi', checked)}
+              />
             </div>
           </div>
         )}
 
         {/* 2. Player & Controls */}
         {activeSection === 'player' && (
-          <div className="settings-section">
-            <div className="section-header">
-              <h3 className="section-heading">Player & Controls</h3>
-              <p className="section-description">
+          <div className="flex flex-col gap-5 max-w-[860px]">
+            <div className="flex flex-col gap-1.5 pb-3 border-b border-border">
+              <h3 className="text-xl font-bold text-foreground">Player & Controls</h3>
+              <p className="text-xs text-muted-foreground leading-relaxed">
                 Configure auto-advance behaviors, seeking increments, overlay timeout, and bottom mini-island.
               </p>
             </div>
 
-            <div className="settings-card">
-              <div className="setting-toggle-row">
-                <div className="toggle-label-group">
-                  <span className="toggle-label">Auto-Play Next in Playlist</span>
-                  <span className="toggle-desc">Seamlessly load and play the next video item upon file EOF</span>
-                </div>
-                <label className="toggle-switch">
-                  <input
-                    type="checkbox"
-                    checked={settings.autoPlayNext}
-                    onChange={(e) => onUpdateSetting('autoPlayNext', e.target.checked)}
-                  />
-                  <span className="toggle-slider" />
-                </label>
-              </div>
+            <div className="bg-surface border border-border rounded-2xl p-6 flex flex-col gap-4 shadow-sm">
+              <SettingToggleRow
+                label="Auto-Play Next in Playlist"
+                desc="Seamlessly load and play the next video item upon file EOF"
+                checked={settings.autoPlayNext}
+                onChange={(checked) => onUpdateSetting('autoPlayNext', checked)}
+              />
 
-              <div className="setting-toggle-row">
-                <div className="toggle-label-group">
-                  <span className="toggle-label">Resume Playback Prompt</span>
-                  <span className="toggle-desc">Show prompt banner to resume from previous timestamp</span>
-                </div>
-                <label className="toggle-switch">
-                  <input
-                    type="checkbox"
-                    checked={settings.resumePlaybackPrompt}
-                    onChange={(e) => onUpdateSetting('resumePlaybackPrompt', e.target.checked)}
-                  />
-                  <span className="toggle-slider" />
-                </label>
-              </div>
+              <SettingToggleRow
+                label="Resume Playback Prompt"
+                desc="Show prompt banner to resume from previous timestamp"
+                checked={settings.resumePlaybackPrompt}
+                onChange={(checked) => onUpdateSetting('resumePlaybackPrompt', checked)}
+              />
 
-              <div className="setting-toggle-row">
-                <div className="toggle-label-group">
-                  <span className="toggle-label">Hovering Mini-Player Island</span>
-                  <span className="toggle-desc">Display floating bottom progress island when navigating away from player</span>
-                </div>
-                <label className="toggle-switch">
-                  <input
-                    type="checkbox"
-                    checked={settings.showHoverIsland}
-                    onChange={(e) => onUpdateSetting('showHoverIsland', e.target.checked)}
-                  />
-                  <span className="toggle-slider" />
-                </label>
-              </div>
+              <SettingToggleRow
+                label="Hovering Mini-Player Island"
+                desc="Display floating bottom progress island when navigating away from player"
+                checked={settings.showHoverIsland}
+                onChange={(checked) => onUpdateSetting('showHoverIsland', checked)}
+              />
 
-              <div className="setting-toggle-row">
-                <div className="toggle-label-group">
-                  <span className="toggle-label">Remember Volume</span>
-                  <span className="toggle-desc">Preserve last adjusted volume level across sessions</span>
-                </div>
-                <label className="toggle-switch">
-                  <input
-                    type="checkbox"
-                    checked={settings.rememberVolume}
-                    onChange={(e) => onUpdateSetting('rememberVolume', e.target.checked)}
-                  />
-                  <span className="toggle-slider" />
-                </label>
-              </div>
+              <SettingToggleRow
+                label="Remember Volume"
+                desc="Preserve last adjusted volume level across sessions"
+                checked={settings.rememberVolume}
+                onChange={(checked) => onUpdateSetting('rememberVolume', checked)}
+              />
             </div>
 
-            <div className="settings-card">
-              <h4 className="card-heading">Seeking & Timing</h4>
+            <div className="bg-surface border border-border rounded-2xl p-6 flex flex-col gap-4 shadow-sm">
+              <h4 className="text-sm font-semibold text-foreground">Seeking & Timing</h4>
 
-              <div className="setting-control-row">
-                <div className="control-label-group">
-                  <span className="control-label">Seek Interval (Left / Right Arrow)</span>
-                  <span className="control-desc">Time jumped on keyboard arrow shortcut</span>
+              <div className="flex items-center justify-between gap-4 py-2 border-b border-border/40">
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-xs font-medium text-foreground">Seek Interval (Left / Right Arrow)</span>
+                  <span className="text-[11px] text-muted-foreground">Time jumped on keyboard arrow shortcut</span>
                 </div>
-                <div className="segmented-btn-group">
+                <div className="inline-flex p-1 rounded-xl bg-surface-muted border border-border gap-1">
                   {[5, 10, 15, 30].map((secs) => (
                     <button
                       key={secs}
                       type="button"
-                      className={`segmented-btn ${settings.seekStepSeconds === secs ? 'active' : ''}`}
+                      className={`px-3 py-1 rounded-lg text-xs font-semibold transition border-none cursor-pointer ${
+                        settings.seekStepSeconds === secs
+                          ? 'bg-primary text-primary-foreground shadow-sm'
+                          : 'bg-transparent text-muted-foreground hover:text-foreground'
+                      }`}
                       onClick={() => onUpdateSetting('seekStepSeconds', secs)}
                     >
                       {secs}s
@@ -387,17 +424,21 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 </div>
               </div>
 
-              <div className="setting-control-row">
-                <div className="control-label-group">
-                  <span className="control-label">Fullscreen Controls Auto-Hide</span>
-                  <span className="control-desc">Inactivity delay before fading out controls bar</span>
+              <div className="flex items-center justify-between gap-4 py-2">
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-xs font-medium text-foreground">Fullscreen Controls Auto-Hide</span>
+                  <span className="text-[11px] text-muted-foreground">Inactivity delay before fading out controls bar</span>
                 </div>
-                <div className="segmented-btn-group">
+                <div className="inline-flex p-1 rounded-xl bg-surface-muted border border-border gap-1">
                   {[2000, 3000, 5000, 8000].map((ms) => (
                     <button
                       key={ms}
                       type="button"
-                      className={`segmented-btn ${settings.hideControlsTimeoutMs === ms ? 'active' : ''}`}
+                      className={`px-3 py-1 rounded-lg text-xs font-semibold transition border-none cursor-pointer ${
+                        settings.hideControlsTimeoutMs === ms
+                          ? 'bg-primary text-primary-foreground shadow-sm'
+                          : 'bg-transparent text-muted-foreground hover:text-foreground'
+                      }`}
                       onClick={() => onUpdateSetting('hideControlsTimeoutMs', ms)}
                     >
                       {ms / 1000}s
@@ -411,24 +452,24 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
         {/* 3. libmpv Engine & HWDEC */}
         {activeSection === 'engine' && (
-          <div className="settings-section">
-            <div className="section-header">
-              <h3 className="section-heading">libmpv Engine & HWDEC</h3>
-              <p className="section-description">
+          <div className="flex flex-col gap-5 max-w-[860px]">
+            <div className="flex flex-col gap-1.5 pb-3 border-b border-border">
+              <h3 className="text-xl font-bold text-foreground">libmpv Engine & HWDEC</h3>
+              <p className="text-xs text-muted-foreground leading-relaxed">
                 Direct hardware decoding options and native Windows x64 libmpv player core configuration.
               </p>
             </div>
 
-            <div className="settings-card">
-              <h4 className="card-heading">Hardware Video Acceleration</h4>
+            <div className="bg-surface border border-border rounded-2xl p-6 flex flex-col gap-4 shadow-sm">
+              <h4 className="text-sm font-semibold text-foreground">Hardware Video Acceleration</h4>
 
-              <div className="setting-control-row">
-                <div className="control-label-group">
-                  <span className="control-label">Hardware Decoding API (hwdec)</span>
-                  <span className="control-desc">Select GPU video acceleration method for video decoding</span>
+              <div className="flex flex-col gap-2 py-2 border-b border-border/40">
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-xs font-medium text-foreground">Hardware Decoding API (hwdec)</span>
+                  <span className="text-[11px] text-muted-foreground">Select GPU video acceleration method for video decoding</span>
                 </div>
                 <select
-                  className="settings-select"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-surface-elevated border border-border text-foreground text-xs font-medium cursor-pointer outline-none focus:border-primary transition"
                   value={settings.hardwareDecoding}
                   onChange={(e) =>
                     onUpdateSetting(
@@ -445,13 +486,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 </select>
               </div>
 
-              <div className="setting-control-row">
-                <div className="control-label-group">
-                  <span className="control-label">Video Output Surface (vo)</span>
-                  <span className="control-desc">Direct3D HWND child surface profile</span>
+              <div className="flex flex-col gap-2 py-2 border-b border-border/40">
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-xs font-medium text-foreground">Video Output Surface (vo)</span>
+                  <span className="text-[11px] text-muted-foreground">Direct3D HWND child surface profile</span>
                 </div>
                 <select
-                  className="settings-select"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-surface-elevated border border-border text-foreground text-xs font-medium cursor-pointer outline-none focus:border-primary transition"
                   value={settings.videoOutput}
                   onChange={(e) =>
                     onUpdateSetting(
@@ -466,51 +507,35 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 </select>
               </div>
 
-              <div className="setting-toggle-row">
-                <div className="toggle-label-group">
-                  <span className="toggle-label">Dynamic Audio Normalization</span>
-                  <span className="toggle-desc">Equalize volume between loud actions and quiet dialogue</span>
-                </div>
-                <label className="toggle-switch">
-                  <input
-                    type="checkbox"
-                    checked={settings.audioNormalization}
-                    onChange={(e) => onUpdateSetting('audioNormalization', e.target.checked)}
-                  />
-                  <span className="toggle-slider" />
-                </label>
-              </div>
+              <SettingToggleRow
+                label="Dynamic Audio Normalization"
+                desc="Equalize volume between loud actions and quiet dialogue"
+                checked={settings.audioNormalization}
+                onChange={(checked) => onUpdateSetting('audioNormalization', checked)}
+              />
 
-              <div className="setting-toggle-row">
-                <div className="toggle-label-group">
-                  <span className="toggle-label">Hardware Deinterlacing</span>
-                  <span className="toggle-desc">Deinterlace interlaced broadcast media streams automatically</span>
-                </div>
-                <label className="toggle-switch">
-                  <input
-                    type="checkbox"
-                    checked={settings.deinterlace}
-                    onChange={(e) => onUpdateSetting('deinterlace', e.target.checked)}
-                  />
-                  <span className="toggle-slider" />
-                </label>
-              </div>
+              <SettingToggleRow
+                label="Hardware Deinterlacing"
+                desc="Deinterlace interlaced broadcast media streams automatically"
+                checked={settings.deinterlace}
+                onChange={(checked) => onUpdateSetting('deinterlace', checked)}
+              />
             </div>
 
             {/* Extensible Custom MPV flags for future development */}
-            <div className="settings-card">
-              <h4 className="card-heading">Advanced MPV Flags & CLI Parameters</h4>
-              <p className="card-subheading">
+            <div className="bg-surface border border-border rounded-2xl p-6 flex flex-col gap-3 shadow-sm">
+              <h4 className="text-sm font-semibold text-foreground">Advanced MPV Flags & CLI Parameters</h4>
+              <p className="text-xs text-muted-foreground leading-relaxed">
                 Enter additional libmpv properties and parameters (e.g., --demuxer-max-bytes=150M).
               </p>
               <textarea
-                className="settings-textarea"
+                className="w-full p-3 rounded-xl bg-surface-elevated border border-border text-foreground font-mono text-xs outline-none focus:border-primary transition resize-y"
                 rows={3}
                 placeholder="--keep-open=yes&#10;--interpolation=no"
                 value={settings.customMpvOptions}
                 onChange={(e) => onUpdateSetting('customMpvOptions', e.target.value)}
               />
-              <span className="card-help-text">
+              <span className="text-[11px] text-muted-foreground">
                 Applied during libmpv initialization and next stream creation.
               </span>
             </div>
@@ -519,52 +544,44 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
         {/* 4. Subtitles & Audio */}
         {activeSection === 'subtitles' && (
-          <div className="settings-section">
-            <div className="section-header">
-              <h3 className="section-heading">Subtitles & Audio</h3>
-              <p className="section-description">
+          <div className="flex flex-col gap-5 max-w-[860px]">
+            <div className="flex flex-col gap-1.5 pb-3 border-b border-border">
+              <h3 className="text-xl font-bold text-foreground">Subtitles & Audio</h3>
+              <p className="text-xs text-muted-foreground leading-relaxed">
                 Customize subtitle rendering, text size, color styling, and preferred track languages.
               </p>
             </div>
 
-            <div className="settings-card">
-              <div className="setting-toggle-row">
-                <div className="toggle-label-group">
-                  <span className="toggle-label">Auto-Load Embedded & External Subtitles</span>
-                  <span className="toggle-desc">Automatically display subtitles matching the media track</span>
-                </div>
-                <label className="toggle-switch">
-                  <input
-                    type="checkbox"
-                    checked={settings.subtitlesEnabled}
-                    onChange={(e) => onUpdateSetting('subtitlesEnabled', e.target.checked)}
-                  />
-                  <span className="toggle-slider" />
-                </label>
-              </div>
+            <div className="bg-surface border border-border rounded-2xl p-6 flex flex-col gap-4 shadow-sm">
+              <SettingToggleRow
+                label="Auto-Load Embedded & External Subtitles"
+                desc="Automatically display subtitles matching the media track"
+                checked={settings.subtitlesEnabled}
+                onChange={(checked) => onUpdateSetting('subtitlesEnabled', checked)}
+              />
 
-              <div className="setting-control-row">
-                <div className="control-label-group">
-                  <span className="control-label">Subtitle Font Size: {settings.subtitleFontSize}px</span>
-                  <span className="control-desc">Adjust size of rendered on-screen subtitles</span>
+              <div className="flex flex-col gap-2 py-2 border-b border-border/40">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-foreground">Subtitle Font Size</span>
+                  <span className="font-mono text-xs text-primary font-semibold">{settings.subtitleFontSize}px</span>
                 </div>
                 <input
                   type="range"
                   min={24}
                   max={64}
                   step={2}
-                  className="settings-slider"
+                  className="w-full h-1.5 rounded-lg appearance-none bg-surface-muted hover:bg-border transition cursor-pointer accent-primary"
                   value={settings.subtitleFontSize}
                   onChange={(e) => onUpdateSetting('subtitleFontSize', Number(e.target.value))}
                 />
               </div>
 
-              <div className="setting-control-row">
-                <div className="control-label-group">
-                  <span className="control-label">Subtitle Text Color</span>
-                  <span className="control-desc">Choose on-screen subtitle typography color</span>
+              <div className="flex flex-col gap-2 py-2 border-b border-border/40">
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-xs font-medium text-foreground">Subtitle Text Color</span>
+                  <span className="text-[11px] text-muted-foreground">Choose on-screen subtitle typography color</span>
                 </div>
-                <div className="color-preset-group">
+                <div className="flex items-center gap-2 mt-1">
                   {[
                     { label: 'White', color: '#FFFFFF' },
                     { label: 'Yellow', color: '#FFF275' },
@@ -574,26 +591,28 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     <button
                       key={preset.color}
                       type="button"
-                      className={`color-preset-btn ${settings.subtitleColor === preset.color ? 'active' : ''}`}
+                      className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-medium transition cursor-pointer ${
+                        settings.subtitleColor === preset.color
+                          ? 'bg-primary/10 border-primary text-foreground'
+                          : 'bg-surface-elevated border-border text-muted-foreground hover:text-foreground'
+                      }`}
                       onClick={() => onUpdateSetting('subtitleColor', preset.color)}
-                      style={{ borderColor: preset.color }}
                     >
-                      <span className="color-dot" style={{ backgroundColor: preset.color }} />
+                      <span className="w-3 h-3 rounded-full border border-black/20" style={{ backgroundColor: preset.color }} />
                       <span>{preset.label}</span>
                     </button>
                   ))}
                 </div>
               </div>
 
-              <div className="setting-control-row">
-                <div className="control-label-group">
-                  <span className="control-label">Preferred Audio Track Language</span>
-                  <span className="control-desc">ISO 639-2 language code (e.g., eng, jpn, spa, hin)</span>
+              <div className="flex flex-col gap-2 py-2">
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-xs font-medium text-foreground">Preferred Audio Track Language</span>
+                  <span className="text-[11px] text-muted-foreground">ISO 639-2 language code (e.g., eng, jpn, spa, hin)</span>
                 </div>
                 <input
                   type="text"
-                  className="settings-input"
-                  style={{ width: '180px' }}
+                  className="w-44 px-3 py-2 rounded-xl bg-surface-elevated border border-border text-foreground font-mono text-xs outline-none focus:border-primary transition"
                   value={settings.preferAudioLanguage}
                   onChange={(e) => onUpdateSetting('preferAudioLanguage', e.target.value)}
                   placeholder="eng"
@@ -605,79 +624,89 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
         {/* 5. Backup & Sync (Import/Export) */}
         {activeSection === 'backup' && (
-          <div className="settings-section">
-            <div className="section-header">
-              <h3 className="section-heading">Backup & Settings Sync</h3>
-              <p className="section-description">
+          <div className="flex flex-col gap-5 max-w-[860px]">
+            <div className="flex flex-col gap-1.5 pb-3 border-b border-border">
+              <h3 className="text-xl font-bold text-foreground">Backup & Settings Sync</h3>
+              <p className="text-xs text-muted-foreground leading-relaxed">
                 Export and import complete preferences to JSON for easy backup or transferring between devices.
               </p>
             </div>
 
-            <div className="settings-card">
-              <h4 className="card-heading">Export & Import Configuration</h4>
-              <p className="card-subheading">
+            <div className="bg-surface border border-border rounded-2xl p-6 flex flex-col gap-4 shadow-sm">
+              <h4 className="text-sm font-semibold text-foreground">Export & Import Configuration</h4>
+              <p className="text-xs text-muted-foreground -mt-2 leading-relaxed">
                 All themes, palettes, hardware settings, and controls are saved into a clean JSON file.
               </p>
 
-              <div className="backup-actions-grid">
-                <button type="button" className="action-card-btn" onClick={handleExport}>
-                  <div className="action-icon-box export">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <button
+                  type="button"
+                  className="flex items-center gap-3.5 p-4 rounded-xl bg-surface-elevated border border-border hover:border-primary hover:bg-surface-elevated/80 transition cursor-pointer text-left group"
+                  onClick={handleExport}
+                >
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-primary/10 text-primary group-hover:scale-105 transition-transform">
                     <Download size={22} />
                   </div>
-                  <div className="action-card-text">
-                    <span className="action-card-title">Export Settings</span>
-                    <span className="action-card-desc">Save configuration to a .json backup file</span>
+                  <div className="flex flex-col">
+                    <span className="text-xs font-semibold text-foreground">Export Settings</span>
+                    <span className="text-[11px] text-muted-foreground">Save configuration to a .json backup file</span>
                   </div>
                 </button>
 
-                <button type="button" className="action-card-btn" onClick={handleImport}>
-                  <div className="action-icon-box import">
+                <button
+                  type="button"
+                  className="flex items-center gap-3.5 p-4 rounded-xl bg-surface-elevated border border-border hover:border-secondary hover:bg-surface-elevated/80 transition cursor-pointer text-left group"
+                  onClick={handleImport}
+                >
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-secondary/10 text-secondary group-hover:scale-105 transition-transform">
                     <Upload size={22} />
                   </div>
-                  <div className="action-card-text">
-                    <span className="action-card-title">Import Settings</span>
-                    <span className="action-card-desc">Load and apply settings from a .json file</span>
+                  <div className="flex flex-col">
+                    <span className="text-xs font-semibold text-foreground">Import Settings</span>
+                    <span className="text-[11px] text-muted-foreground">Load and apply settings from a .json file</span>
                   </div>
                 </button>
               </div>
             </div>
 
-            <div className="settings-card danger-zone">
-              <div className="danger-header">
-                <AlertCircle size={20} className="danger-icon" />
+            <div className="bg-destructive/10 border border-destructive/30 rounded-2xl p-6 flex flex-col gap-4">
+              <div className="flex items-center gap-3">
+                <AlertCircle size={20} className="text-destructive shrink-0" />
                 <div>
-                  <h4 className="card-heading" style={{ color: '#ffb4ab' }}>
-                    Reset Preferences
-                  </h4>
-                  <p className="card-subheading">
+                  <h4 className="text-sm font-semibold text-destructive">Reset Preferences</h4>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
                     Restore all settings, themes, and configurations back to factory defaults.
                   </p>
                 </div>
               </div>
 
               {!isResetConfirmOpen ? (
-                <button
-                  type="button"
-                  className="danger-btn"
-                  onClick={() => setIsResetConfirmOpen(true)}
-                >
-                  <RotateCcw size={15} />
-                  <span>Restore Factory Defaults</span>
-                </button>
+                <div>
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-destructive text-destructive-foreground font-semibold text-xs transition hover:bg-destructive/90 cursor-pointer border-none shadow-sm"
+                    onClick={() => setIsResetConfirmOpen(true)}
+                  >
+                    <RotateCcw size={15} />
+                    <span>Restore Factory Defaults</span>
+                  </button>
+                </div>
               ) : (
-                <div className="confirm-reset-box">
-                  <span className="confirm-text">Are you sure you want to restore all settings to default?</span>
-                  <div className="confirm-btn-row">
+                <div className="p-4 rounded-xl bg-surface border border-destructive/40 flex flex-col gap-3">
+                  <span className="text-xs font-medium text-foreground">
+                    Are you sure you want to restore all settings to default?
+                  </span>
+                  <div className="flex items-center gap-2">
                     <button
                       type="button"
-                      className="confirm-btn cancel"
+                      className="px-3.5 py-1.5 rounded-lg border border-border text-xs font-medium text-foreground hover:bg-surface-elevated transition cursor-pointer"
                       onClick={() => setIsResetConfirmOpen(false)}
                     >
                       Cancel
                     </button>
                     <button
                       type="button"
-                      className="confirm-btn confirm"
+                      className="px-3.5 py-1.5 rounded-lg bg-destructive text-destructive-foreground text-xs font-semibold hover:bg-destructive/90 transition cursor-pointer border-none"
                       onClick={() => {
                         onResetSettings();
                         setIsResetConfirmOpen(false);
@@ -695,98 +724,108 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
         {/* 6. System Diagnostics */}
         {activeSection === 'diagnostics' && (
-          <div className="settings-section">
-            <div className="section-header">
-              <h3 className="section-heading">System Diagnostics & Security</h3>
-              <p className="section-description">
+          <div className="flex flex-col gap-5 max-w-[860px]">
+            <div className="flex flex-col gap-1.5 pb-3 border-b border-border">
+              <h3 className="text-xl font-bold text-foreground">System Diagnostics & Security</h3>
+              <p className="text-xs text-muted-foreground leading-relaxed">
                 Real-time native libmpv engine verification, Win32 HWND status, and Chromium security boundaries.
               </p>
             </div>
 
-            <div className="audit-cards-grid">
-              <div className="audit-card">
-                <div className="card-header">
-                  <Cpu className="card-icon" size={18} />
-                  <h3 className="card-title">Staged Native Assets</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="bg-surface border border-border rounded-xl p-4 flex flex-col gap-3 shadow-sm">
+                <div className="flex items-center gap-2 text-primary font-semibold text-xs border-b border-border/50 pb-2">
+                  <Cpu size={16} />
+                  <span>Staged Native Assets</span>
                 </div>
-                <div className="card-rows">
-                  <div className="card-row">
-                    <span className="row-label">libmpv Binary</span>
-                    <span className="row-value">windows/x64/libmpv-2.dll</span>
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">libmpv Binary</span>
+                    <span className="font-mono text-foreground font-medium text-[11px]">windows/x64/libmpv-2.dll</span>
                   </div>
-                  <div className="card-row">
-                    <span className="row-label">Playback State</span>
-                    <span className="row-status-verified">{playbackStatus.mediaState}</span>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">Playback State</span>
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                      {playbackStatus.mediaState}
+                    </span>
                   </div>
-                  <div className="card-row">
-                    <span className="row-label">Video Surface</span>
-                    <span className="row-value">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">Video Surface</span>
+                    <span className="font-mono text-foreground font-medium text-[11px]">
                       {playbackStatus.videoWidth && playbackStatus.videoHeight
                         ? `${playbackStatus.videoWidth}x${playbackStatus.videoHeight} (Win32 HWND)`
                         : 'Win32 Child HWND (vo=gpu)'}
                     </span>
                   </div>
-                  <div className="card-row">
-                    <span className="row-label">libmpv API</span>
-                    <span className="row-value">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">libmpv API</span>
+                    <span className="font-mono text-foreground font-medium text-[11px]">
                       {nativePoc?.apiVersion?.formatted ? `v${nativePoc.apiVersion.formatted} Connected` : 'Probing...'}
                     </span>
                   </div>
-                  <div className="card-row">
-                    <span className="row-label">Player Service</span>
-                    <span className="row-status-verified">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">Player Service</span>
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
                       {playerStatus?.state ? `State: ${playerStatus.state}` : 'Connecting...'}
                     </span>
                   </div>
                 </div>
               </div>
 
-              <div className="audit-card">
-                <div className="card-header">
-                  <ShieldCheck className="card-icon" size={18} />
-                  <h3 className="card-title">Electron Security Enforcements</h3>
+              <div className="bg-surface border border-border rounded-xl p-4 flex flex-col gap-3 shadow-sm">
+                <div className="flex items-center gap-2 text-primary font-semibold text-xs border-b border-border/50 pb-2">
+                  <ShieldCheck size={16} />
+                  <span>Electron Security Enforcements</span>
                 </div>
-                <div className="card-rows">
-                  <div className="card-row">
-                    <span className="row-label">contextIsolation</span>
-                    <span className="row-status-verified">true</span>
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">contextIsolation</span>
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                      true
+                    </span>
                   </div>
-                  <div className="card-row">
-                    <span className="row-label">nodeIntegration</span>
-                    <span className="row-status-verified">false</span>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">nodeIntegration</span>
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                      false
+                    </span>
                   </div>
-                  <div className="card-row">
-                    <span className="row-label">Chromium Sandbox</span>
-                    <span className="row-status-verified">true</span>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">Chromium Sandbox</span>
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                      true
+                    </span>
                   </div>
-                  <div className="card-row">
-                    <span className="row-label">Navigation Lock</span>
-                    <span className="row-status-verified">Enforced (will-navigate blocked)</span>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">Navigation Lock</span>
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                      Enforced
+                    </span>
                   </div>
                 </div>
               </div>
 
-              <div className="audit-card">
-                <div className="card-header">
-                  <Layers className="card-icon" size={18} />
-                  <h3 className="card-title">Application Architecture</h3>
+              <div className="bg-surface border border-border rounded-xl p-4 flex flex-col gap-3 shadow-sm">
+                <div className="flex items-center gap-2 text-primary font-semibold text-xs border-b border-border/50 pb-2">
+                  <Layers size={16} />
+                  <span>Application Architecture</span>
                 </div>
-                <div className="card-rows">
-                  <div className="card-row">
-                    <span className="row-label">Rendering Mode</span>
-                    <span className="row-value">Direct3D HW-Accel (vo=gpu)</span>
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">Rendering Mode</span>
+                    <span className="font-mono text-foreground font-medium text-[11px]">Direct3D HW-Accel (vo=gpu)</span>
                   </div>
-                  <div className="card-row">
-                    <span className="row-label">Persistence</span>
-                    <span className="row-value">winsqlite3 (Schema v3)</span>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">Persistence</span>
+                    <span className="font-mono text-foreground font-medium text-[11px]">winsqlite3 (Schema v3)</span>
                   </div>
-                  <div className="card-row">
-                    <span className="row-label">Fullscreen Mode</span>
-                    <span className="row-value">{isFullscreen ? 'Active (Auto-hide)' : 'Windowed'}</span>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">Fullscreen Mode</span>
+                    <span className="font-mono text-foreground font-medium text-[11px]">{isFullscreen ? 'Active' : 'Windowed'}</span>
                   </div>
-                  <div className="card-row">
-                    <span className="row-label">Current Palette</span>
-                    <span className="row-value">{settings.accentPalette} ({settings.themeMode})</span>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">Current Palette</span>
+                    <span className="font-mono text-foreground font-medium text-[11px]">{settings.accentPalette} ({settings.themeMode})</span>
                   </div>
                 </div>
               </div>

@@ -95,7 +95,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
   return (
     <>
       {!isDesktopBridge && !isFullscreen && (
-        <div className="browser-diagnostic-banner" role="alert">
+        <div className="mx-4 mt-2 mb-2 p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-200 text-xs flex items-center gap-2" role="alert">
           <AlertCircle size={16} />
           <span>
             <strong>Browser Preview Mode:</strong> Native Electron desktop bridge (window.nosvedAPI) is not available. Playback controls require the Electron desktop application window.
@@ -110,37 +110,37 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
           role="dialog"
           aria-modal="true"
         >
-          <div className="resume-modal-card">
-            <div className="resume-modal-header">
-              <Clock size={20} className="resume-modal-icon" />
+          <div className="bg-surface-elevated/95 backdrop-blur-md border border-border rounded-2xl p-4 shadow-2xl flex flex-wrap items-center justify-between gap-4 text-foreground">
+            <div className="flex items-center gap-3">
+              <Clock size={20} className="text-primary shrink-0" />
               <div>
-                <h3 className="resume-modal-title">Resume Playback</h3>
-                <p className="resume-modal-subtitle">
-                  You previously watched this video up to <strong>{formatTime(resumePrompt.position)}</strong>.
+                <h3 className="text-sm font-semibold text-foreground">Resume Playback</h3>
+                <p className="text-xs text-muted-foreground">
+                  You previously watched this video up to <strong className="text-foreground">{formatTime(resumePrompt.position)}</strong>.
                 </p>
               </div>
             </div>
-            <div className="resume-modal-actions">
+            <div className="flex items-center gap-2">
               <button
                 type="button"
-                className="resume-btn primary"
+                className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-primary text-primary-foreground font-semibold text-xs shadow hover:scale-[1.02] active:scale-[0.98] transition cursor-pointer border-none"
                 onClick={onResumePlayback}
                 autoFocus
               >
-                <Play size={16} />
+                <Play size={14} />
                 <span>Resume from {formatTime(resumePrompt.position)}</span>
               </button>
               <button
                 type="button"
-                className="resume-btn secondary"
+                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-surface-muted hover:bg-surface-elevated text-foreground font-medium text-xs border border-border transition cursor-pointer"
                 onClick={onStartFromBeginning}
               >
-                <RotateCcw size={16} />
+                <RotateCcw size={14} />
                 <span>Start from Beginning</span>
               </button>
               <button
                 type="button"
-                className="resume-dismiss-btn"
+                className="p-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-surface-muted transition cursor-pointer border-none bg-transparent"
                 onClick={onDismissResumePrompt}
                 title="Dismiss (Esc)"
                 aria-label="Dismiss resume prompt"
@@ -169,20 +169,20 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
           {playbackStatus.currentFile && (
             <>
               {playbackStatus.mediaState === 'loading' && (
-                <div className="player-loading-overlay">
-                  <div className="loading-spinner" />
+                <div className="absolute inset-0 bg-background/85 flex flex-col items-center justify-center gap-3 text-primary text-xs font-semibold z-10">
+                  <div className="w-8 h-8 rounded-full border-2 border-primary/20 border-t-primary animate-spin" />
                   <span>Loading Media Stream...</span>
                 </div>
               )}
               {playbackStatus.error && (
-                <div className="player-error-banner" role="alert">
-                  <div className="error-banner-body">
+                <div className="absolute top-4 left-4 right-4 bg-destructive/90 text-destructive-foreground backdrop-blur-md px-4 py-3 rounded-xl border border-destructive shadow-lg flex items-center justify-between gap-3 text-xs z-20" role="alert">
+                  <div className="flex items-center gap-2">
                     <AlertCircle size={16} />
                     <span>{playbackStatus.error}</span>
                   </div>
                   <button
                     type="button"
-                    className="error-dismiss-btn"
+                    className="p-1 rounded text-destructive-foreground/80 hover:text-destructive-foreground hover:bg-white/10 transition cursor-pointer border-none bg-transparent"
                     onClick={onDismissError}
                     title="Dismiss error (Esc)"
                     aria-label="Dismiss error"
@@ -208,10 +208,10 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
           onFocus={onControlsFocus}
           onBlur={onControlsBlur}
         >
-          <div className="controls-left">
+          <div className="flex items-center gap-2">
             <button
               type="button"
-              className="control-btn primary-play-btn"
+              className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-primary text-primary-foreground hover:scale-105 active:scale-95 transition-transform cursor-pointer border-none shadow-md disabled:opacity-40 disabled:cursor-not-allowed"
               onClick={onTogglePlayPause}
               disabled={!playbackStatus.currentFile || playbackStatus.mediaState === 'loading'}
               title={
@@ -240,7 +240,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
 
             <button
               type="button"
-              className="control-btn"
+              className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-surface-muted/60 hover:bg-surface-muted text-foreground hover:text-primary transition cursor-pointer border-none"
               onClick={onOpenFile}
               title="Open Video File"
               aria-label="Open Video File"
@@ -252,7 +252,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
               <>
                 <button
                   type="button"
-                  className="control-btn"
+                  className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-surface-muted/60 hover:bg-surface-muted text-foreground hover:text-primary transition cursor-pointer border-none disabled:opacity-40 disabled:cursor-not-allowed"
                   onClick={onPlayPrevPlaylistItem}
                   disabled={activePlaylist.currentIndex <= 0}
                   title="Previous in Playlist"
@@ -262,7 +262,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
                 </button>
                 <button
                   type="button"
-                  className="control-btn"
+                  className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-surface-muted/60 hover:bg-surface-muted text-foreground hover:text-primary transition cursor-pointer border-none disabled:opacity-40 disabled:cursor-not-allowed"
                   onClick={onPlayNextPlaylistItem}
                   disabled={activePlaylist.currentIndex >= activePlaylist.items.length - 1}
                   title="Next in Playlist"
@@ -270,24 +270,24 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
                 >
                   <SkipForward size={16} />
                 </button>
-                <div className="active-playlist-indicator" title={`Playlist: ${activePlaylist.playlistName}`}>
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-surface-muted/80 text-[11px] font-medium text-muted-foreground border border-border" title={`Playlist: ${activePlaylist.playlistName}`}>
                   <ListMusic size={12} />
                   <span>{activePlaylist.currentIndex + 1} / {activePlaylist.items.length}</span>
                 </div>
               </>
             )}
 
-            <div className="time-display" aria-live="off">
+            <div className="inline-flex items-center gap-1 font-mono text-xs text-muted-foreground font-medium select-none ml-1" aria-live="off">
               <span>{formatTime(isScrubbing && scrubPosition !== null ? scrubPosition : playbackStatus.position)}</span>
-              <span className="time-sep">/</span>
+              <span className="opacity-40">/</span>
               <span>{formatTime(playbackStatus.duration)}</span>
             </div>
           </div>
 
-          <div className="controls-center">
+          <div className="flex-1 flex items-center px-4">
             <input
               type="range"
-              className="seek-slider"
+              className="w-full h-1.5 rounded-lg appearance-none bg-surface-muted hover:bg-border transition cursor-pointer accent-primary disabled:opacity-40 seek-slider"
               min={0}
               max={playbackStatus.duration && playbackStatus.duration > 0 ? playbackStatus.duration : 100}
               step={0.1}
@@ -308,10 +308,10 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
             />
           </div>
 
-          <div className="controls-right">
+          <div className="flex items-center gap-2">
             <button
               type="button"
-              className="control-btn"
+              className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-surface-muted/60 hover:bg-surface-muted text-foreground hover:text-primary transition cursor-pointer border-none"
               onClick={onToggleMute}
               title={playbackStatus.muted || playbackStatus.volume === 0 ? 'Unmute (M)' : 'Mute (M)'}
               aria-label={playbackStatus.muted || playbackStatus.volume === 0 ? 'Unmute' : 'Mute'}
@@ -321,7 +321,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
 
             <input
               type="range"
-              className="volume-slider"
+              className="w-20 h-1.5 rounded-lg appearance-none bg-surface-muted hover:bg-border transition cursor-pointer accent-primary volume-slider"
               min={0}
               max={100}
               step={1}
@@ -331,12 +331,22 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
               aria-label="Volume slider"
             />
 
-            <span className="volume-label">
+            <span className="font-mono text-xs text-muted-foreground w-8 text-right select-none">
               {playbackStatus.muted ? '0%' : `${Math.round(playbackStatus.volume)}%`}
             </span>
 
             {playbackStatus.currentFile && (
-              <span className={`status-pill status-${playbackStatus.mediaState}`}>
+              <span className={`px-2 py-0.5 rounded text-[10px] font-bold tracking-wider uppercase border ${
+                playbackStatus.mediaState === 'playing'
+                  ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                  : playbackStatus.mediaState === 'paused'
+                  ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                  : playbackStatus.mediaState === 'loading'
+                  ? 'bg-primary/15 text-primary border-primary/30'
+                  : playbackStatus.mediaState === 'ended'
+                  ? 'bg-muted/30 text-muted-foreground border-border'
+                  : 'bg-destructive/15 text-destructive border-destructive/30'
+              }`}>
                 {playbackStatus.mediaState.toUpperCase()}
               </span>
             )}
@@ -344,7 +354,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
             {/* Fullscreen Toggle Button */}
             <button
               type="button"
-              className="control-btn fullscreen-btn"
+              className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-surface-muted/60 hover:bg-surface-muted text-foreground hover:text-primary transition cursor-pointer border-none"
               onClick={(e) => {
                 e.stopPropagation();
                 onTriggerFullscreenToggle();

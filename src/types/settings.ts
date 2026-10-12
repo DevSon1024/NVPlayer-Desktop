@@ -120,7 +120,7 @@ export interface AppSettings {
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
-  themeMode: 'dark',
+  themeMode: 'system',
   accentPalette: 'default',
   highContrast: false,
   compactUi: false,
@@ -192,25 +192,31 @@ export function serializeSettingsToRaw(settings: AppSettings): Record<string, st
   return result;
 }
 
+export function resolveEffectiveTheme(themeMode: ThemeMode): 'dark' | 'light' {
+  if (themeMode === 'system') {
+    if (typeof window !== 'undefined' && window.matchMedia) {
+      return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    }
+    return 'dark';
+  }
+  return themeMode;
+}
+
 export function applyThemeToDom(
   themeMode: ThemeMode,
   accentPalette: AccentPalette,
   highContrast: boolean,
   compactUi: boolean
 ): void {
+  if (typeof document === 'undefined') return;
   const root = document.documentElement;
-
-  // Resolve system mode
-  let effectiveTheme: 'dark' | 'light' = 'dark';
-  if (themeMode === 'system') {
-    const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-    effectiveTheme = prefersDark ? 'dark' : 'light';
-  } else {
-    effectiveTheme = themeMode;
-  }
+  const effectiveTheme = resolveEffectiveTheme(themeMode);
 
   root.setAttribute('data-theme', effectiveTheme);
   root.setAttribute('data-palette', accentPalette);
+  root.classList.toggle('dark', effectiveTheme === 'dark');
+  root.style.colorScheme = effectiveTheme;
+
   if (highContrast) {
     root.setAttribute('data-contrast', 'high');
   } else {

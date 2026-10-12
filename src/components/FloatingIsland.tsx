@@ -47,69 +47,72 @@ export const FloatingIsland: React.FC<FloatingIslandProps> = ({
 
   return (
     <aside
-      className="floating-playback-island"
+      className="fixed bottom-6 right-6 left-[284px] max-md:left-[216px] max-w-[620px] ml-auto z-50 rounded-2xl bg-surface/90 backdrop-blur-xl border border-border shadow-2xl overflow-hidden cursor-pointer transition-all duration-200 hover:-translate-y-0.5 select-none"
       onClick={onNavigateToPlayer}
       title="Click to expand player view"
       role="region"
       aria-label="Now playing floating controls"
     >
       {/* Top Progress Track */}
-      <div className="floating-island-progress-track">
+      <div className="w-full h-1 bg-surface-muted overflow-hidden">
         <div
-          className="floating-island-progress-fill"
+          className="h-full bg-primary transition-all duration-150"
           style={{ width: `${progressPercent}%` }}
         />
       </div>
 
-      <div className="floating-island-content">
+      <div className="flex items-center gap-3.5 px-4 py-2.5">
         {/* Miniature Screen Thumbnail Preview */}
-        <div className="floating-mini-screen">
+        <div className="w-14 h-9 rounded-lg bg-surface-dim border border-border overflow-hidden relative shrink-0 flex items-center justify-center">
           {thumbnailKey ? (
             <img
               src={`nosved-thumb://${thumbnailKey}/`}
               alt={fileName}
-              className="floating-mini-thumb"
+              className="w-full h-full object-cover"
               loading="lazy"
             />
           ) : (
-            <div className="floating-mini-placeholder">
+            <div className="text-muted-foreground">
               <Film size={16} />
             </div>
           )}
 
           {!playbackStatus.paused && (
-            <div className="mini-screen-playing-pulse" title="Playing" />
+            <div
+              className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-primary ring-2 ring-primary/40 animate-pulse"
+              title="Playing"
+            />
           )}
         </div>
 
         {/* Media Metadata */}
-        <div className="floating-media-meta">
-          <div className="floating-media-title-row">
-            <span className="floating-media-title" title={fileName}>
+        <div className="flex flex-col min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-foreground truncate" title={fileName}>
               {fileName}
             </span>
             {activePlaylist && (
-              <span className="floating-playlist-badge">
+              <span className="text-[10px] px-1.5 py-0.2 rounded bg-primary-container text-on-primary-container font-mono shrink-0">
                 {activePlaylist.currentIndex + 1}/{activePlaylist.items.length}
               </span>
             )}
           </div>
-          <div className="floating-media-time">
+          <div className="flex items-center gap-1 text-[11px] font-mono text-muted-foreground mt-0.5">
             <span>{formatTime(playbackStatus.position)}</span>
-            <span className="time-sep">/</span>
+            <span className="opacity-50">/</span>
             <span>{formatTime(playbackStatus.duration)}</span>
           </div>
         </div>
 
         {/* Compact Controls */}
         <div
-          className="floating-island-controls"
+          className="flex items-center gap-1.5 shrink-0"
           onClick={(e) => e.stopPropagation()}
         >
           {activePlaylist && onPlayPrev && (
             <button
               type="button"
-              className="island-control-btn"
+              className="w-7 h-7 rounded-full bg-surface-muted hover:bg-surface-elevated text-foreground border border-border flex items-center justify-center cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-not-allowed outline-none focus-visible:ring-2 focus-visible:ring-primary"
               onClick={onPlayPrev}
               disabled={activePlaylist.currentIndex <= 0}
               title="Previous playlist item"
@@ -121,7 +124,7 @@ export const FloatingIsland: React.FC<FloatingIslandProps> = ({
 
           <button
             type="button"
-            className="island-control-btn primary"
+            className="w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center cursor-pointer hover:scale-105 transition-transform shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-primary"
             onClick={onTogglePlayPause}
             title={playbackStatus.paused ? 'Play (Space)' : 'Pause (Space)'}
             aria-label={playbackStatus.paused ? 'Play' : 'Pause'}
@@ -132,7 +135,7 @@ export const FloatingIsland: React.FC<FloatingIslandProps> = ({
           {activePlaylist && onPlayNext && (
             <button
               type="button"
-              className="island-control-btn"
+              className="w-7 h-7 rounded-full bg-surface-muted hover:bg-surface-elevated text-foreground border border-border flex items-center justify-center cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-not-allowed outline-none focus-visible:ring-2 focus-visible:ring-primary"
               onClick={onPlayNext}
               disabled={activePlaylist.currentIndex >= activePlaylist.items.length - 1}
               title="Next playlist item"
@@ -144,7 +147,7 @@ export const FloatingIsland: React.FC<FloatingIslandProps> = ({
 
           <button
             type="button"
-            className="island-control-btn"
+            className="w-7 h-7 rounded-full bg-surface-muted hover:bg-surface-elevated text-foreground border border-border flex items-center justify-center cursor-pointer transition-colors outline-none focus-visible:ring-2 focus-visible:ring-primary"
             onClick={onToggleMute}
             title={playbackStatus.muted ? 'Unmute (M)' : 'Mute (M)'}
             aria-label={playbackStatus.muted ? 'Unmute' : 'Mute'}
@@ -154,7 +157,7 @@ export const FloatingIsland: React.FC<FloatingIslandProps> = ({
 
           <button
             type="button"
-            className="island-control-btn expand-btn"
+            className="w-7 h-7 rounded-full bg-transparent hover:bg-primary-container text-muted-foreground hover:text-primary flex items-center justify-center cursor-pointer transition-colors outline-none focus-visible:ring-2 focus-visible:ring-primary"
             onClick={(e) => {
               e.stopPropagation();
               onNavigateToPlayer();

@@ -593,6 +593,30 @@ export const App: React.FC = () => {
     }
   }, []);
 
+  // Dynamic OS color-scheme listener for System mode
+  useEffect(() => {
+    if (settings.themeMode !== 'system') return;
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    const handleSystemThemeChange = () => {
+      applyThemeToDom(
+        'system',
+        settings.accentPalette,
+        settings.highContrast,
+        settings.compactUi
+      );
+    };
+
+    if (mediaQuery.addEventListener) {
+      mediaQuery.addEventListener('change', handleSystemThemeChange);
+      return () => mediaQuery.removeEventListener('change', handleSystemThemeChange);
+    } else if (mediaQuery.addListener) {
+      mediaQuery.addListener(handleSystemThemeChange);
+      return () => mediaQuery.removeListener(handleSystemThemeChange);
+    }
+  }, [settings.themeMode, settings.accentPalette, settings.highContrast, settings.compactUi]);
+
   // Settings Actions
   const handleUpdateSetting = useCallback(
     async <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
@@ -973,7 +997,7 @@ export const App: React.FC = () => {
 
   return (
     <div
-      className={`app-layout ${isFullscreen ? 'fullscreen-active' : ''}`}
+      className={`flex h-full w-full bg-background select-none app-layout ${isFullscreen ? 'fullscreen-active' : ''}`}
       onMouseMove={resetInactivityTimer}
     >
       {/* Navigation Rail / Sidebar (Hidden in Fullscreen) */}
@@ -988,34 +1012,34 @@ export const App: React.FC = () => {
       )}
 
       {/* Main Viewport Content */}
-      <main className={`main-viewport ${isFullscreen ? 'fullscreen-mode' : ''}`}>
+      <main className={`flex-1 flex flex-col h-full overflow-hidden bg-background main-viewport ${isFullscreen ? 'fullscreen-mode' : ''}`}>
         {!isFullscreen && (
-          <header className="viewport-header">
-            <div className="header-status-group">
-              <div className="status-indicator">
-                <div className="status-dot" />
+          <header className="h-16 min-h-16 flex items-center justify-between px-8 border-b border-border bg-surface/70 backdrop-blur-md sticky top-0 z-10 viewport-header">
+            <div className="flex items-center gap-3">
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/25">
+                <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399]" />
                 <span>Desktop Engine Ready</span>
               </div>
-              <span className="arch-tag">
+              <span className="font-mono text-[11px] text-muted-foreground bg-surface-elevated px-2 py-1 rounded-lg border border-border">
                 {appInfo ? `${appInfo.platform}-${appInfo.arch}` : 'win32-x64'}
               </span>
             </div>
 
             {playbackStatus.currentFile && (
-              <div className="header-media-info" title={playbackStatus.currentFile}>
+              <div className="flex items-center gap-2 px-3 py-1 bg-surface border border-border rounded-full text-primary text-xs max-w-[440px]" title={playbackStatus.currentFile}>
                 <Film size={14} />
-                <span className="header-media-title">
+                <span className="max-w-[280px] truncate font-medium text-foreground">
                   {playbackStatus.currentFile.split(/[/\\]/).pop() || playbackStatus.currentFile}
                 </span>
                 {playbackStatus.videoWidth && playbackStatus.videoHeight && (
-                  <span className="resolution-badge">
+                  <span className="font-mono text-[10px] font-semibold px-1.5 py-0.5 bg-primary/15 border border-primary/30 rounded text-primary">
                     {playbackStatus.videoWidth}x{playbackStatus.videoHeight}
                   </span>
                 )}
               </div>
             )}
 
-            <span className="arch-tag" style={{ color: '#a8c7fa' }}>
+            <span className="font-mono text-[11px] text-primary bg-surface-elevated px-2 py-1 rounded-lg border border-border">
               v{appInfo?.version || '0.1.0'}
             </span>
           </header>
