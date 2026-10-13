@@ -163,7 +163,11 @@ export function useAppSettings() {
 
   const handleClearThumbnailCache = useCallback(async () => {
     if (window.nosvedAPI?.clearThumbnailCache) {
-      return await window.nosvedAPI.clearThumbnailCache();
+      const res = await window.nosvedAPI.clearThumbnailCache();
+      if (window.nosvedAPI?.refreshAllThumbnails) {
+        window.nosvedAPI.refreshAllThumbnails(true).catch(console.error);
+      }
+      return res;
     }
     return false;
   }, []);

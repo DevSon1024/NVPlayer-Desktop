@@ -4,15 +4,19 @@ import type { MediaItem } from '../types/electron';
 export function useMediaLibrary(activeTab: string) {
   const [libraryItems, setLibraryItems] = useState<MediaItem[]>([]);
   const [recentItems, setRecentItems] = useState<MediaItem[]>([]);
+  const [refreshVersion, setRefreshVersion] = useState<number>(0);
 
-  const refreshLibrary = useCallback(async () => {
+  const refreshLibrary = useCallback(async (force = false) => {
     if (!window.nosvedAPI?.getLibrary) return;
     try {
+      if (force) {
+        setRefreshVersion((v) => v + 1);
+      }
       const items = await window.nosvedAPI.getLibrary();
       setLibraryItems(items);
       for (const item of items) {
-        if (!item.thumbnailKey && !item.isMissing && window.nosvedAPI.extractMetadata) {
-          window.nosvedAPI.extractMetadata(item.id).then((updated) => {
+        if ((force || !item.thumbnailKey) && !item.isMissing && window.nosvedAPI.extractMetadata) {
+          window.nosvedAPI.extractMetadata(item.id, force).then((updated) => {
             if (updated && updated.thumbnailKey) {
               setLibraryItems((prev) =>
                 prev.map((p) => (p.id === updated.id ? { ...p, ...updated } : p))
@@ -35,6 +39,15 @@ export function useMediaLibrary(activeTab: string) {
       console.error('Failed to fetch recent history:', err);
     }
   }, []);
+
+  const handleRefreshAll = useCallback(async () => {
+    setRefreshVersion((v) => v + 1);
+    await refreshLibrary(true);
+    await refreshRecent();
+    if (window.nosvedAPI?.refreshAllThumbnails) {
+      await window.nosvedAPI.refreshAllThumbnails(true);
+    }
+  }, [refreshLibrary, refreshRecent]);
 
   const handleImportFiles = async () => {
     if (!window.nosvedAPI?.importMediaFiles) return;
@@ -70,6 +83,27 @@ export function useMediaLibrary(activeTab: string) {
   }, [refreshLibrary, refreshRecent]);
 
   useEffect(() => {
+    if (!window.nosvedAPI?.onF5Pressed) return;
+    const unsub = window.nosvedAPI.onF5Pressed(() => {
+      handleRefreshAll();
+    });
+    return unsub;
+  }, [handleRefreshAll]);
+
+  useEffect(() => {
+    if (!window.nosvedAPI?.onMediaMetadataUpdated) return;
+    const unsub = window.nosvedAPI.onMediaMetadataUpdated((updated) => {
+      setLibraryItems((prev) =>
+        prev.map((item) => (item.id === updated.id ? { ...item, ...updated } : item))
+      );
+      setRecentItems((prev) =>
+        prev.map((item) => (item.id === updated.id ? { ...item, ...updated } : item))
+      );
+    });
+    return unsub;
+  }, []);
+
+  useEffect(() => {
     if (activeTab === 'home') {
       refreshRecent();
       refreshLibrary();
@@ -83,10 +117,12 @@ export function useMediaLibrary(activeTab: string) {
   return {
     libraryItems,
     recentItems,
+    refreshVersion,
     setLibraryItems,
     setRecentItems,
     refreshLibrary,
     refreshRecent,
+    handleRefreshAll,
     handleImportFiles,
     handleRemoveMedia,
   };

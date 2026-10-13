@@ -8,13 +8,13 @@ import {
   Trash2,
   Play,
   Video,
-  Film,
   ArrowUp,
   ArrowDown,
 } from 'lucide-react';
 import type { Playlist, PlaylistItem } from '../types/electron';
 import type { ActivePlaylistState } from './PlayerView';
 import { formatTime } from '../utils/formatters';
+import { VideoThumbnail } from './VideoThumbnail';
 
 interface PlaylistsViewProps {
   playlists: Playlist[];
@@ -378,20 +378,13 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({
                     >
                       <span className="text-xs font-mono text-muted-foreground w-6 text-center">{idx + 1}</span>
                       <div className="w-16 h-10 rounded-lg bg-surface-dim overflow-hidden shrink-0 flex items-center justify-center relative">
-                        {showThumbnails && item.media?.thumbnailKey ? (
-                          <img
-                            src={`nosved-thumb://${item.media.thumbnailKey}`}
-                            alt={item.media.fileName}
-                            className="w-full h-full object-cover"
-                            onError={(e) => {
-                              (e.currentTarget as HTMLElement).style.display = 'none';
-                            }}
-                          />
-                        ) : (
-                          <div className="text-muted-foreground">
-                            <Film size={16} />
-                          </div>
-                        )}
+                        <VideoThumbnail
+                          thumbnailKey={item.media?.thumbnailKey}
+                          mediaId={item.media?.id}
+                          fileName={item.media?.fileName}
+                          showThumbnails={showThumbnails}
+                          fallbackIconSize={16}
+                        />
                       </div>
                       <div className="flex flex-col min-w-0 flex-1">
                         <span className="text-sm font-medium text-foreground truncate" title={item.media?.fileName}>

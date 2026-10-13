@@ -11,7 +11,7 @@ export interface MetadataHandlerContext {
 }
 
 export function registerMetadataHandlers(ctx: MetadataHandlerContext): void {
-  ipcMain.handle('metadata:extract-media', async (event, mediaId: unknown) => {
+  ipcMain.handle('metadata:extract-media', async (event, mediaId: unknown, force: unknown) => {
     if (!validateIpcSender(event, ctx.getMainWindow(), ctx.isDev)) {
       throw new Error('Unauthorized IPC invocation: Sender validation failed');
     }
@@ -24,10 +24,28 @@ export function registerMetadataHandlers(ctx: MetadataHandlerContext): void {
 
     const metadataService = ctx.getMetadataService();
     if (metadataService) {
-      await metadataService.extractForMedia(media);
+      await metadataService.extractForMedia(media, Boolean(force));
       return mediaDb?.getMediaById(mediaId) ?? null;
     }
     return media;
+  });
+
+  ipcMain.handle('metadata:refresh-all', async (event, force: unknown) => {
+    if (!validateIpcSender(event, ctx.getMainWindow(), ctx.isDev)) {
+      throw new Error('Unauthorized IPC invocation: Sender validation failed');
+    }
+    const mediaDb = ctx.getMediaDb();
+    const metadataService = ctx.getMetadataService();
+    if (!metadataService || !mediaDb) return false;
+
+    const all = mediaDb.getAllMedia();
+    const shouldForce = Boolean(force);
+    for (const media of all) {
+      if (!media.isMissing) {
+        void metadataService.extractForMedia(media, shouldForce);
+      }
+    }
+    return true;
   });
 
   ipcMain.handle('metadata:cleanup-cache', (event) => {

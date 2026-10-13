@@ -2,12 +2,12 @@ import React from 'react';
 import {
   Library,
   FolderPlus,
-  Film,
   ListMusic,
   Trash2,
 } from 'lucide-react';
 import type { MediaItem } from '../types/electron';
 import { formatTime, formatBytes, formatDate } from '../utils/formatters';
+import { VideoThumbnail } from './VideoThumbnail';
 
 interface LibraryViewProps {
   libraryItems: MediaItem[];
@@ -74,20 +74,14 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
               onClick={() => !item.isMissing && onOpenMedia(item.filePath)}
             >
               <div className="aspect-video w-full relative bg-surface-dim overflow-hidden flex items-center justify-center">
-                {showThumbnails && item.thumbnailKey ? (
-                  <img
-                    src={`nosved-thumb://${item.thumbnailKey}`}
-                    alt={item.fileName}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                    onError={(e) => {
-                      (e.currentTarget as HTMLElement).style.display = 'none';
-                    }}
-                  />
-                ) : (
-                  <div className="text-muted-foreground">
-                    <Film size={28} />
-                  </div>
-                )}
+                <VideoThumbnail
+                  thumbnailKey={item.thumbnailKey}
+                  mediaId={item.id}
+                  fileName={item.fileName}
+                  showThumbnails={showThumbnails}
+                  fallbackIconSize={28}
+                  imgClassName="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                />
                 {item.duration && (
                   <span className="absolute bottom-1.5 right-1.5 px-1.5 py-0.5 rounded bg-black/80 backdrop-blur text-[10px] font-mono font-medium text-white">
                     {formatTime(item.duration)}

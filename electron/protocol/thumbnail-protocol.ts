@@ -1,4 +1,4 @@
-import { protocol, net } from 'electron';
+import { protocol } from 'electron';
 import fs from 'node:fs';
 import type { MetadataService } from '../native/metadata-service';
 
@@ -19,11 +19,11 @@ export function registerThumbnailScheme(): void {
 export function setupThumbnailProtocol(getMetadataService: () => MetadataService | null): void {
   protocol.handle('nosved-thumb', (request) => {
     try {
-      const url = new URL(request.url);
-      const rawKey = (url.hostname || url.pathname).replace(/^\/+|\/+$/g, '').toLowerCase();
-      if (!/^[a-f0-9]{64}$/.test(rawKey)) {
+      const match = request.url.match(/([a-f0-9]{64})/i);
+      if (!match) {
         return new Response('Invalid thumbnail key', { status: 400 });
       }
+      const rawKey = match[1].toLowerCase();
 
       const metadataService = getMetadataService();
       const thumbPath = metadataService?.getThumbnailPath(rawKey);
@@ -31,8 +31,15 @@ export function setupThumbnailProtocol(getMetadataService: () => MetadataService
         return new Response('Thumbnail not found', { status: 404 });
       }
 
-      const normalized = thumbPath.replace(/\\/g, '/');
-      return net.fetch(`file:///${normalized}`);
+      const buffer = fs.readFileSync(thumbPath);
+      return new Response(buffer, {
+        status: 200,
+        headers: {
+          'Content-Type': 'image/jpeg',
+          'Content-Length': String(buffer.length),
+          'Cache-Control': 'no-cache, must-revalidate',
+        },
+      });
     } catch {
       return new Response('Protocol error', { status: 500 });
     }

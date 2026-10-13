@@ -100,6 +100,13 @@ function createWindow(): void {
 
   applyNativeTitleBarTheme(mainWindow, savedThemeMode, savedIsAmoled);
 
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    if (input.key === 'F5' && input.type === 'keyDown') {
+      event.preventDefault();
+      mainWindow?.webContents.send('app:f5-pressed');
+    }
+  });
+
   try {
     const nativeHwnd = mainWindow.getNativeWindowHandle().readBigInt64LE();
     const childHwnd = videoWindow.create(nativeHwnd);
@@ -250,6 +257,28 @@ function createWindow(): void {
                   titleBarThemeResult = { error: String(e) };
                 }
 
+                let thumbnailProtocolTestResult = null;
+                try {
+                  const lib = await window.nosvedAPI?.getLibrary?.();
+                  const firstWithThumb = lib?.find((item) => item.thumbnailKey);
+                  if (firstWithThumb && firstWithThumb.thumbnailKey) {
+                    const imgTest = await new Promise((res) => {
+                      const img = new Image();
+                      img.onload = () => res({ loaded: true, width: img.naturalWidth, height: img.naturalHeight });
+                      img.onerror = () => res({ loaded: false, error: 'img onerror triggered' });
+                      img.src = 'nosved-thumb://' + firstWithThumb.thumbnailKey;
+                    });
+                    thumbnailProtocolTestResult = {
+                      key: firstWithThumb.thumbnailKey,
+                      ...imgTest,
+                    };
+                  } else {
+                    thumbnailProtocolTestResult = { noThumbnailInLibrary: true, totalLib: lib?.length };
+                  }
+                } catch (e) {
+                  thumbnailProtocolTestResult = { error: String(e) };
+                }
+
                 resolve({
                   hasNosvedAPI: typeof window.nosvedAPI !== 'undefined',
                   hasProcess: typeof window.process !== 'undefined',
@@ -265,6 +294,7 @@ function createWindow(): void {
                   fullscreenTestResult,
                   libraryTestResult,
                   titleBarThemeResult,
+                  thumbnailProtocolTestResult,
                 });
               } else if (attempts < 80) {
                 setTimeout(check, 50);
@@ -328,14 +358,19 @@ app.whenReady().then(() => {
     mediaDb = new MediaDatabase(path.join(userData, 'nosved_media.db'));
     mediaDb.init();
     metadataService = new MetadataService(path.join(userData, 'thumbnails'), mediaDb);
+    metadataService.onMetadataUpdated((updatedMedia) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('media:metadata-updated', updatedMedia);
+      }
+    });
   } catch (err) {
     console.error('[Main] Failed to initialize media database or metadata service:', err);
   }
 
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     const csp = isDev
-      ? "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: nosved-thumb:; font-src 'self' data:; connect-src 'self' ws://localhost:* http://localhost:* ws://127.0.0.1:* http://127.0.0.1:*; base-uri 'self'; form-action 'none'; object-src 'none';"
-      : "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: nosved-thumb:; font-src 'self' data:; connect-src 'self' ws://localhost:* http://localhost:* ws://127.0.0.1:* http://127.0.0.1:*; base-uri 'self'; form-action 'none'; object-src 'none';";
+      ? "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: nosved-thumb:; font-src 'self' data:; connect-src 'self' nosved-thumb: ws://localhost:* http://localhost:* ws://127.0.0.1:* http://127.0.0.1:*; base-uri 'self'; form-action 'none'; object-src 'none';"
+      : "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: nosved-thumb:; font-src 'self' data:; connect-src 'self' nosved-thumb: ws://localhost:* http://localhost:* ws://127.0.0.1:* http://127.0.0.1:*; base-uri 'self'; form-action 'none'; object-src 'none';";
 
     callback({
       responseHeaders: {

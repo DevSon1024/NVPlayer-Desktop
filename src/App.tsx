@@ -51,6 +51,7 @@ export const App: React.FC = () => {
   const {
     libraryItems,
     recentItems,
+    handleRefreshAll,
     handleImportFiles,
     handleRemoveMedia,
   } = useMediaLibrary(activeTab);
@@ -168,6 +169,12 @@ export const App: React.FC = () => {
 
       resetInactivityTimer();
 
+      if (e.key === 'F5') {
+        e.preventDefault();
+        handleRefreshAll();
+        return;
+      }
+
       if (e.key === 'F11') {
         e.preventDefault();
         if (isPlayerFullscreen) {
@@ -258,6 +265,7 @@ export const App: React.FC = () => {
     setPlaybackStatus,
     resetInactivityTimer,
     settings.seekStepSeconds,
+    handleRefreshAll,
   ]);
 
   const isDesktopBridge = typeof window !== 'undefined' && typeof window.nosvedAPI !== 'undefined';
@@ -441,6 +449,7 @@ export const App: React.FC = () => {
           {activeTab === 'recent' && !isPlayerFullscreen && (
             <RecentView
               recentItems={recentItems}
+              showThumbnails={settings.showThumbnails}
               onOpenMedia={openMediaWithResumeCheck}
               onOpenFile={handleOpenFile}
             />

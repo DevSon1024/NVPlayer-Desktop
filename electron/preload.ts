@@ -185,9 +185,12 @@ export interface NosvedAPI {
   pickFilesForPlaylist: (playlistId: string) => Promise<{ canceled: boolean; addedCount: number }>;
   addFilesToPlaylist: (playlistId: string, filePaths: string[]) => Promise<{ success: boolean; addedCount: number }>;
   getPathForFile: (file: File) => string;
-  extractMetadata: (mediaId: string) => Promise<MediaItemPayload | null>;
+  extractMetadata: (mediaId: string, force?: boolean) => Promise<MediaItemPayload | null>;
+  refreshAllThumbnails: (force?: boolean) => Promise<boolean>;
   cleanupThumbnails: () => Promise<void>;
   clearThumbnailCache: () => Promise<boolean>;
+  onMediaMetadataUpdated: (callback: (media: MediaItemPayload) => void) => () => void;
+  onF5Pressed: (callback: () => void) => () => void;
 
   // Settings & Themes
   getSettings: () => Promise<Record<string, string>>;
@@ -307,9 +310,28 @@ const api: NosvedAPI = {
     }
     return (file as unknown as { path?: string }).path || '';
   },
-  extractMetadata: (mediaId: string) => ipcRenderer.invoke('metadata:extract-media', mediaId),
+  extractMetadata: (mediaId: string, force?: boolean) => ipcRenderer.invoke('metadata:extract-media', mediaId, force),
+  refreshAllThumbnails: (force?: boolean) => ipcRenderer.invoke('metadata:refresh-all', force),
   cleanupThumbnails: () => ipcRenderer.invoke('metadata:cleanup-cache'),
   clearThumbnailCache: () => ipcRenderer.invoke('metadata:clear-cache'),
+  onMediaMetadataUpdated: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, media: unknown) => {
+      callback(media as MediaItemPayload);
+    };
+    ipcRenderer.on('media:metadata-updated', handler);
+    return () => {
+      ipcRenderer.removeListener('media:metadata-updated', handler);
+    };
+  },
+  onF5Pressed: (callback) => {
+    const handler = () => {
+      callback();
+    };
+    ipcRenderer.on('app:f5-pressed', handler);
+    return () => {
+      ipcRenderer.removeListener('app:f5-pressed', handler);
+    };
+  },
 
   // Settings & Themes
   getSettings: () => ipcRenderer.invoke('settings:get-all'),

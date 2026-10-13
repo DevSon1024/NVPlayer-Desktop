@@ -6,7 +6,6 @@ import {
   Library,
   ListMusic,
   History,
-  Film,
   Sparkles,
   ChevronRight,
   Clock,
@@ -15,6 +14,7 @@ import {
 import type { MediaItem, Playlist } from '../types/electron';
 import { formatTime, formatBytes, formatDate } from '../utils/formatters';
 import type { TabType } from './Navbar';
+import { VideoThumbnail } from './VideoThumbnail';
 
 interface HomeViewProps {
   recentItems: MediaItem[];
@@ -133,20 +133,14 @@ export const HomeView: React.FC<HomeViewProps> = ({
               onClick={() => onOpenMedia(lastPlayed.filePath)}
               title={`Play ${lastPlayed.fileName}`}
             >
-              {showThumbnails && lastPlayed.thumbnailKey ? (
-                <img
-                  src={`nosved-thumb://${lastPlayed.thumbnailKey}/`}
-                  alt={lastPlayed.fileName}
-                  className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-                  onError={(e) => {
-                    (e.currentTarget as HTMLElement).style.display = 'none';
-                  }}
-                />
-              ) : (
-                <div className="text-muted-foreground">
-                  <Film size={48} />
-                </div>
-              )}
+              <VideoThumbnail
+                thumbnailKey={lastPlayed.thumbnailKey}
+                mediaId={lastPlayed.id}
+                fileName={lastPlayed.fileName}
+                showThumbnails={showThumbnails}
+                fallbackIconSize={48}
+                imgClassName="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+              />
               <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                 <div className="w-12 h-12 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-lg">
                   <Play size={24} />
@@ -306,20 +300,14 @@ export const HomeView: React.FC<HomeViewProps> = ({
                   title={item.filePath}
                 >
                   <div className="aspect-video w-full relative bg-surface-dim overflow-hidden flex items-center justify-center">
-                    {showThumbnails && item.thumbnailKey ? (
-                      <img
-                        src={`nosved-thumb://${item.thumbnailKey}/`}
-                        alt={item.fileName}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                        onError={(e) => {
-                          (e.currentTarget as HTMLElement).style.display = 'none';
-                        }}
-                      />
-                    ) : (
-                      <div className="text-muted-foreground">
-                        <Film size={24} />
-                      </div>
-                    )}
+                    <VideoThumbnail
+                      thumbnailKey={item.thumbnailKey}
+                      mediaId={item.id}
+                      fileName={item.fileName}
+                      showThumbnails={showThumbnails}
+                      fallbackIconSize={24}
+                      imgClassName="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    />
                     {item.duration && (
                       <span className="absolute bottom-1.5 right-1.5 px-1.5 py-0.5 rounded bg-black/80 backdrop-blur text-[10px] font-mono font-medium text-white">
                         {formatTime(item.duration)}
@@ -389,20 +377,14 @@ export const HomeView: React.FC<HomeViewProps> = ({
                 title={item.filePath}
               >
                 <div className="aspect-video w-full relative bg-surface-dim overflow-hidden flex items-center justify-center">
-                  {showThumbnails && item.thumbnailKey ? (
-                    <img
-                      src={`nosved-thumb://${item.thumbnailKey}/`}
-                      alt={item.fileName}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                      onError={(e) => {
-                        (e.currentTarget as HTMLElement).style.display = 'none';
-                      }}
-                    />
-                  ) : (
-                    <div className="text-muted-foreground">
-                      <Film size={24} />
-                    </div>
-                  )}
+                  <VideoThumbnail
+                    thumbnailKey={item.thumbnailKey}
+                    mediaId={item.id}
+                    fileName={item.fileName}
+                    showThumbnails={showThumbnails}
+                    fallbackIconSize={24}
+                    imgClassName="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                  />
                   {item.duration && (
                     <span className="absolute bottom-1.5 right-1.5 px-1.5 py-0.5 rounded bg-black/80 backdrop-blur text-[10px] font-mono font-medium text-white">
                       {formatTime(item.duration)}

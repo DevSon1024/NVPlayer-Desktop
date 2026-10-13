@@ -36,6 +36,8 @@ export function computeMediaThumbnailKey(
     .digest('hex');
 }
 
+export type MetadataUpdateCallback = (media: MediaRecord) => void;
+
 export class MetadataService {
   private thumbnailDir: string;
   private mediaDb: MediaDatabase;
@@ -43,6 +45,14 @@ export class MetadataService {
   private pendingPromises = new Map<string, Promise<ExtractedMetadata | null>>();
   private queue: Array<() => Promise<void>> = [];
   private isProcessingQueue = false;
+  private updateCallbacks: MetadataUpdateCallback[] = [];
+
+  public onMetadataUpdated(callback: MetadataUpdateCallback): () => void {
+    this.updateCallbacks.push(callback);
+    return () => {
+      this.updateCallbacks = this.updateCallbacks.filter((cb) => cb !== callback);
+    };
+  }
 
   constructor(
     thumbnailDir: string,
@@ -87,10 +97,10 @@ export class MetadataService {
     return { mode, position: isNaN(position) ? 33 : position };
   }
 
-  public async extractForMedia(media: MediaRecord): Promise<ExtractedMetadata | null> {
+  public extractForMedia(media: MediaRecord, force = false): Promise<ExtractedMetadata | null> {
     const resolvedPath = path.resolve(media.filePath);
     if (!fs.existsSync(resolvedPath)) {
-      return null;
+      return Promise.resolve(null);
     }
 
     let currentSize = media.fileSize;
@@ -116,28 +126,36 @@ export class MetadataService {
       media.videoCodec !== null &&
       media.videoCodec !== undefined;
 
-    // Cache hit: If metadata is already complete and thumbnail file exists, no need to probe
-    if (hasFullMetadata && hasThumb && media.thumbnailKey === expectedKey) {
-      return {
-        duration: media.duration,
-        videoWidth: media.videoWidth ?? null,
-        videoHeight: media.videoHeight ?? null,
-        videoCodec: media.videoCodec ?? null,
-        audioCodec: media.audioCodec ?? null,
-        fps: media.fps ?? null,
-        thumbnailKey: expectedKey,
-        fileSize: currentSize,
-        lastModified: currentMtime,
-      };
+    // Cache hit: If not forced, metadata is already complete, thumbnail file exists, and not a black frame
+    if (!force && hasFullMetadata && hasThumb && media.thumbnailKey === expectedKey) {
+      try {
+        const thumbStat = fs.statSync(existingThumbPath);
+        // If thumb file is suspiciously small (black frame ~15KB) and duration > 10s, re-extract properly
+        if (thumbStat.size > 20000 || (media.duration && media.duration <= 10)) {
+          return Promise.resolve({
+            duration: media.duration,
+            videoWidth: media.videoWidth ?? null,
+            videoHeight: media.videoHeight ?? null,
+            videoCodec: media.videoCodec ?? null,
+            audioCodec: media.audioCodec ?? null,
+            fps: media.fps ?? null,
+            thumbnailKey: expectedKey,
+            fileSize: currentSize,
+            lastModified: currentMtime,
+          });
+        }
+      } catch {
+        // Continue to queue extraction
+      }
     }
 
-    return this.queueExtraction(resolvedPath, media.id, currentSize, currentMtime, expectedKey, mode, position);
+    return this.queueExtraction(resolvedPath, media.id, currentSize, currentMtime, expectedKey, mode, position, force);
   }
 
-  public async extractForFile(filePath: string): Promise<ExtractedMetadata | null> {
+  public extractForFile(filePath: string, force = false): Promise<ExtractedMetadata | null> {
     const resolvedPath = path.resolve(filePath);
     if (!fs.existsSync(resolvedPath)) {
-      return null;
+      return Promise.resolve(null);
     }
 
     let fileSize: number | null = null;
@@ -154,7 +172,7 @@ export class MetadataService {
     const key = computeMediaThumbnailKey(resolvedPath, fileSize, lastModified, mode, position);
     const existingMedia = this.mediaDb.getMediaByPath(resolvedPath);
 
-    return this.queueExtraction(resolvedPath, existingMedia?.id, fileSize, lastModified, key, mode, position);
+    return this.queueExtraction(resolvedPath, existingMedia?.id, fileSize, lastModified, key, mode, position, force);
   }
 
   private queueExtraction(
@@ -164,11 +182,12 @@ export class MetadataService {
     lastModified: number | null,
     cacheKey: string,
     mode: 'smart' | 'first_frame' | 'frame_position' | 'embedded' = 'smart',
-    position = 33
+    position = 33,
+    force = false
   ): Promise<ExtractedMetadata | null> {
-    const queueKey = `${filePath}:${cacheKey}`;
+    const queueKey = force ? `${filePath}:${cacheKey}:${Date.now()}` : `${filePath}:${cacheKey}`;
     // Deduplicate in-flight requests for the exact same file & cache key
-    if (this.pendingPromises.has(queueKey)) {
+    if (!force && this.pendingPromises.has(queueKey)) {
       return this.pendingPromises.get(queueKey)!;
     }
 
@@ -186,6 +205,16 @@ export class MetadataService {
               fps: result.fps,
               thumbnailKey: result.thumbnailKey,
             });
+            const updated = this.mediaDb.getMediaById(mediaId);
+            if (updated) {
+              for (const cb of this.updateCallbacks) {
+                try {
+                  cb(updated);
+                } catch (cbErr) {
+                  console.error('[MetadataService] Error in update callback:', cbErr);
+                }
+              }
+            }
           }
           resolve(result);
         } catch (err) {
@@ -261,6 +290,20 @@ export class MetadataService {
       funcs.mpv_set_property_string(ctx, 'audio', 'no');
       funcs.mpv_set_property_string(ctx, 'sub', 'no');
 
+      let targetPct = 0;
+      if (mode === 'smart') {
+        targetPct = 33;
+      } else if (mode === 'first_frame') {
+        targetPct = 0;
+      } else if (mode === 'frame_position') {
+        targetPct = Math.max(0, Math.min(100, Math.round(position)));
+      }
+
+      // Pre-seed start position in mpv to avoid decoding 0s intro black frames
+      if (targetPct > 0) {
+        funcs.mpv_set_property_string(ctx, 'start', `${targetPct}%`);
+      }
+
       const initCode = funcs.mpv_initialize(ctx);
       if (initCode < 0) {
         throw new Error(`mpv_initialize failed with code ${initCode}`);
@@ -279,39 +322,58 @@ export class MetadataService {
       }
 
       // Execute strategic frame seeking & albumart detection
-      if (mode === 'smart' || mode === 'embedded') {
-        let foundAlbumArt = false;
-        const countStr = safeGetMpvPropertyString(funcs, ctx, 'track-list/count');
-        const count = countStr ? parseInt(countStr, 10) : 0;
-        for (let i = 0; i < count; i++) {
-          const isAlbumArt = safeGetMpvPropertyString(funcs, ctx, `track-list/${i}/albumart`);
-          const trackType = safeGetMpvPropertyString(funcs, ctx, `track-list/${i}/type`);
-          const trackId = safeGetMpvPropertyString(funcs, ctx, `track-list/${i}/id`);
-          if (trackType === 'video' && isAlbumArt === 'yes' && trackId) {
-            funcs.mpv_set_property_string(ctx, 'vid', trackId);
-            foundAlbumArt = true;
-            break;
+      let albumArtTrackId: string | null = null;
+      let mainVideoTrackId: string | null = null;
+      const countStr = safeGetMpvPropertyString(funcs, ctx, 'track-list/count');
+      const count = countStr ? parseInt(countStr, 10) : 0;
+      for (let i = 0; i < count; i++) {
+        const art = safeGetMpvPropertyString(funcs, ctx, `track-list/${i}/albumart`);
+        const trackType = safeGetMpvPropertyString(funcs, ctx, `track-list/${i}/type`);
+        const trackId = safeGetMpvPropertyString(funcs, ctx, `track-list/${i}/id`);
+        if (trackType === 'video') {
+          if (art === 'yes' && !albumArtTrackId && trackId) {
+            albumArtTrackId = trackId;
+          } else if (art !== 'yes' && !mainVideoTrackId && trackId) {
+            mainVideoTrackId = trackId;
           }
         }
-
-        if (!foundAlbumArt) {
-          if (mode === 'smart') {
-            funcs.mpv_command(ctx, ['seek', '33', 'absolute-percent', null]);
-          } else {
-            funcs.mpv_command(ctx, ['seek', '0', 'absolute-percent', null]);
-          }
-        }
-      } else if (mode === 'first_frame') {
-        funcs.mpv_command(ctx, ['seek', '0', 'absolute-percent', null]);
-      } else if (mode === 'frame_position') {
-        const pct = Math.max(0, Math.min(100, Math.round(position)));
-        funcs.mpv_command(ctx, ['seek', String(pct), 'absolute-percent', null]);
       }
 
-      // Step one frame to force vo=image output at the desired frame
-      funcs.mpv_command(ctx, ['frame-step', null]);
-      for (let i = 0; i < 15; i++) {
-        funcs.mpv_wait_event(ctx, 0.05);
+      let isAlbumArt = false;
+      if ((mode === 'smart' || mode === 'embedded') && albumArtTrackId) {
+        isAlbumArt = true;
+        funcs.mpv_set_property_string(ctx, 'vid', albumArtTrackId);
+        // Wait for offscreen image output without stepping past the single still frame
+        for (let i = 0; i < 15; i++) {
+          funcs.mpv_wait_event(ctx, 0.05);
+          const files = fs.readdirSync(tempDir).filter((f) => f.toLowerCase().endsWith('.jpg'));
+          if (files.length > 0) break;
+        }
+      } else if (mode === 'embedded') {
+        // Explicitly requested embedded thumbnail, but no album art track was present in file
+      } else {
+        if (mainVideoTrackId) {
+          funcs.mpv_set_property_string(ctx, 'vid', mainVideoTrackId);
+        }
+
+        if (targetPct > 0) {
+          funcs.mpv_command(ctx, ['seek', String(targetPct), 'absolute-percent+exact', null]);
+          for (let i = 0; i < 20; i++) {
+            const ev = funcs.mpv_wait_event(ctx, 0.05);
+            // MPV_EVENT_PLAYBACK_RESTART = 22
+            if (ev && (ev as { event_id?: number }).event_id === 22) {
+              break;
+            }
+          }
+        }
+
+        // Step one frame to force vo=image output at the desired frame
+        funcs.mpv_command(ctx, ['frame-step', null]);
+        for (let i = 0; i < 15; i++) {
+          funcs.mpv_wait_event(ctx, 0.05);
+          const files = fs.readdirSync(tempDir).filter((f) => f.toLowerCase().endsWith('.jpg'));
+          if (files.length > 0) break;
+        }
       }
 
       // Extract raw properties
@@ -334,15 +396,33 @@ export class MetadataService {
       // Check generated thumbnail frame in temp directory
       let hasThumbnail = false;
       try {
-        const files = fs.readdirSync(tempDir).filter((f) => f.toLowerCase().endsWith('.jpg')).sort();
+        const files = fs
+          .readdirSync(tempDir)
+          .filter((f) => f.toLowerCase().endsWith('.jpg'))
+          .map((f) => {
+            const full = path.join(tempDir, f);
+            try {
+              return { name: f, size: fs.statSync(full).size, full };
+            } catch {
+              return { name: f, size: 0, full };
+            }
+          })
+          .filter((f) => f.size > 0);
+
+        files.sort((a, b) => a.name.localeCompare(b.name));
+
         if (files.length > 0) {
-          const targetJpg = files[files.length - 1];
-          const srcThumb = path.join(tempDir, targetJpg);
-          fs.copyFileSync(srcThumb, finalThumbPath);
+          // If seeking video frame, the latest file in sequence is the desired frame; if embedded album art, files[0] is the still art
+          const targetJpg = isAlbumArt ? files[0] : files[files.length - 1];
+          fs.copyFileSync(targetJpg.full, finalThumbPath);
           hasThumbnail = true;
         }
       } catch (err) {
         console.warn('[MetadataService] Could not copy generated thumbnail:', err);
+      }
+
+      if (!hasThumbnail && duration === null && videoWidth === null && (!vcodec || vcodec.trim().length === 0)) {
+        return null;
       }
 
       return {

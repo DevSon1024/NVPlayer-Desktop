@@ -1,16 +1,19 @@
 import React from 'react';
-import { History, Film, Play, FolderOpen } from 'lucide-react';
+import { History, Play, FolderOpen } from 'lucide-react';
 import type { MediaItem } from '../types/electron';
 import { formatTime, formatDate } from '../utils/formatters';
+import { VideoThumbnail } from './VideoThumbnail';
 
 interface RecentViewProps {
   recentItems: MediaItem[];
+  showThumbnails?: boolean;
   onOpenMedia: (filePath: string) => void;
   onOpenFile: () => void;
 }
 
 export const RecentView: React.FC<RecentViewProps> = ({
   recentItems,
+  showThumbnails = true,
   onOpenMedia,
   onOpenFile,
 }) => {
@@ -57,8 +60,14 @@ export const RecentView: React.FC<RecentViewProps> = ({
                 }`}
                 onClick={() => !item.isMissing && onOpenMedia(item.filePath)}
               >
-                <div className="w-10 h-10 rounded-xl bg-primary-container text-primary flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-                  <Film size={20} />
+                <div className="w-16 h-10 rounded-lg overflow-hidden shrink-0 group-hover:scale-105 transition-transform relative bg-surface-dim flex items-center justify-center">
+                  <VideoThumbnail
+                    thumbnailKey={item.thumbnailKey}
+                    mediaId={item.id}
+                    fileName={item.fileName}
+                    showThumbnails={showThumbnails}
+                    fallbackIconSize={18}
+                  />
                 </div>
                 <div className="flex flex-col gap-1 flex-1 min-w-0">
                   <div className="text-sm font-semibold text-foreground truncate" title={item.filePath}>
