@@ -1,72 +1,70 @@
-# AI Agent Instructions for Nosved Player KMP Development
+# AI Agent Instructions for Nosved Player Desktop Development
 
-This document serves as the absolute source of truth for any AI agent or LLM assisting with the development of the **Nosved Player KMP** project (`com.devson.nosvedplayerkmp`). You must strictly adhere to these rules, architectural guidelines, resource-saving rules, and development philosophies before generating or modifying any code.
+This document serves as the absolute source of truth for any AI agent assisting with the development of the **Nosved Player Desktop** project. You must strictly adhere to these rules, architectural guidelines, and development philosophies before generating or modifying any code.
 
-## 1. Core Development Philosophy & Architecture
+## 1. Core Development Philosophy
 
-- **Goal:** Nosved Player KMP is a high-performance, native Kotlin Multiplatform media player targeting Windows Desktop (via Kotlin/JVM, JNA, OpenGL, and native libmpv 2.0) and Android, built with Compose Multiplatform, Coroutines/Flow, and Material 3 Expressive.
-- **Strict Layer Separation:**
-  ```
-  UI (Compose Multiplatform)
-    ↓
-  ViewModels / UI State Flow
-    ↓
-  Shared Media / Queue / Repository Layer
-    ↓
-  Shared Player API (Player interface)
-    ↓
-  Platform Engine (MpvPlayer)
-    ↓
-  Native Engine (libmpv 2.0 C API via JNA / C bindings)
-  ```
-- **Engine Isolation:** Never bypass the Player API. Never put mpv, JNA, C bindings, or platform native rendering calls inside Compose UI.
-- **Flawless Execution:** The app MUST run with maximum fluidity. UI stutter, frame drops, or blocking the Main/UI thread are completely unacceptable.
-- **Zero Crash Tolerance:** Always prioritize graceful degradation (error states, fallbacks, empty states) over unhandled exceptions. **Never** use the not-null assertion operator (`!!`).
-- **No Hallucinations:** Only use existing APIs, classes, and dependencies in the project. Always start every response with the words: **"Hey Devson"**.
-- **Short & Concise Explanations:** Keep explanations short, precise, and direct (preferably one-line summaries). Do not produce unnecessary long paragraphs or conversational filler.
+- **Goal:** Nosved Player Desktop is a high-performance, native Windows x64 desktop video player application built with React, TypeScript, Electron, Vite, Material 3 Expressive UI (Vanilla CSS), and the native libmpv engine.
+- **Greeting Requirement:** Always start every chat response with the words "Hey Devson".
+- **One Line Explanation & Brevity:** Be extremely short, precise, and direct. Never provide long explanatory essays, filler, or unrequested conversational text.
+- **Flawless Execution:** The application MUST run smoothly without stutter, memory leaks, or UI lag.
+- **Zero Crash Tolerance:** Graceful degradation over unhandled exceptions. Handle errors safely in both Electron Main and React Renderer without taking down the app.
+- **No Hallucinations:** Only use verified APIs, packages, files, and assets present in the project. If unsure, request inspection before assuming.
+- **Forbidden Character:** Do not add the unicode box-drawing character '─' anywhere in any file.
 
-## 2. UI & Compose Multiplatform Guidelines
+## 2. Desktop UI & Styling Guidelines
 
-- **UI Framework:** Compose Multiplatform is the exclusive UI framework. No legacy XML screens or web-based UI technologies.
-- **Material 3 Expressive:** Exclusively use Material 3 components and design tokens. Never hardcode colors; always use the centralized `NosvedTheme`.
-- **Desktop & Mobile Adaptivity:**
-  - On desktop, use desktop-first conventions: `NavigationRail`, window placement/fullscreen synchronization, keyboard shortcuts, mouse-wheel volume/scrubbing, and drag-and-drop file support.
-  - Do not force mobile-only navigation patterns onto desktop interfaces.
-- **State Hoisting & Recomposition:**
-  - Keep composables stateless through state hoisting.
-  - Ensure StateFlow updates are targeted to avoid unnecessary recompositions across unaffected branches of the UI tree.
-  - **Never** perform I/O, heavy parsing, or object allocations inside composables.
+- **Framework:** React with strict TypeScript.
+- **Styling:** Vanilla CSS with Material 3 Expressive design tokens. Avoid Tailwind CSS unless explicitly requested.
+- **Desktop-First & Touch-Aware:** Design intuitive, responsive desktop layouts with generous click/touch targets, clean surface hierarchies, and accessible contrast.
+- **Icons:** Use `lucide-react` for consistent iconography.
+- **Component Hygiene:** Keep components focused and stateless where possible. Never run heavy computation, synchronous blocking loops, or direct filesystem I/O in the renderer.
 
-## 3. Code Quality, Concurrency & Resource Optimization
+## 3. Electron Security & Architecture Boundaries
 
-- **Language:** Kotlin is the exclusive programming language.
-- **Asynchronous Operations:** Use Kotlin Coroutines and Flows (`StateFlow`/`SharedFlow`) exclusively.
-- **Disk & Filesystem I/O:**
-  - Dispatch all filesystem queries, folder scanning, and repository reads/writes to `Dispatchers.IO`.
-  - Never query the filesystem (e.g. `File.exists()`, `File.lastModified()`, `File.listFiles()`) on the Main thread or inside rendering/animation loops.
-  - Cache folder indexes and library metadata locally in `~/.nosved/` rather than repeatedly traversing disk directories.
-- **Coroutine Scope & Lifecycle Management:**
-  - Always manage ViewModel coroutines using a dedicated child `SupervisorJob` chained to the parent scope, cancelling only the child job upon ViewModel release. This prevents `JobCancellationException` during testing and prevents coroutine leaks in runtime.
-- **Memory & Resource Efficiency:**
-  - Avoid redundant allocations, duplicate collections, and repetitive string processing in hot paths.
-  - Use lazy collections (`LazyVerticalGrid`, `LazyColumn`) for all media listings.
-- **Code Writing Constraint:** Do not add '─' anywhere in the code files.
+- **BrowserWindow Enforcements:**
+  - `contextIsolation: true` is mandatory.
+  - `nodeIntegration: false` is mandatory.
+  - `sandbox: true` is mandatory.
+  - Web security enabled; running insecure content forbidden.
+- **Preload Exposure:**
+  - Only expose minimal, strictly-typed methods through `contextBridge.exposeInMainWorld('nosvedAPI', ...)`.
+  - Never expose raw `ipcRenderer`, Node.js globals, `require`, `process`, `Buffer`, or filesystem primitives to React.
+- **IPC Validation:** Every IPC invoke must validate `event.senderFrame.url` and verify the sender against the approved window origin before executing privileged tasks.
+- **Navigation Lock:** Deny unapproved navigations (`will-navigate`) and block new window popups (`setWindowOpenHandler` deny).
+- **Content Security Policy:** Maintain strict CSP headers on all pages and responses.
 
-## 4. Documentation & Update Tracking
+## 4. Code Quality, Toolchain & Native Asset Preservation
 
-Maintain the project changelog by appending updates to `update_details.md` after completing a task, feature, or bug fix:
-- Do NOT rewrite or overwrite existing contents; only append new entries at the end.
-- Use the following required format:
-  ```markdown
-  ### [YYYY-MM-DD HH:mm]
-  - **Issue:** (Brief description of the problem or task)
-  - **Type:** (Error | Bug | UI | Performance | Architecture | Feature)
-  - **Solution:** (Concise explanation of the solution, max 10 lines)
-  ---
-  ```
-- Do not include conversational filler in `update_details.md`.
+- **Language:** TypeScript with strict type checking (`tsc --noEmit` must pass with 0 errors).
+- **Native libmpv Assets:**
+  - Never move, rename, delete, or overwrite assets in `windows/x64/` (`libmpv-2.dll`, `libmpv.dll.a`, `include/mpv/*`, `note.md`).
+  - `libmpv-2.dll` is an untracked binary (>100MB) preserved locally on disk. Never attempt to force-track it into standard Git commits without authorization.
+- **Build & Quality Gates:**
+  - After any change, verify: `npm run typecheck`, `npm run build`, and `npm test`.
+  - Never leave broken builds, failed tests, or unresolved linter errors.
 
-## 5. Version Control (Git) Protocol
+## 5. Strict Limits for Agent Actions
 
-- **Do not commit or push** any changes to the repository until explicitly being asked to do so by the developer.
-- **Do not change any `.gitignore`** file automatically. Leave all `.gitignore` files as they are.
+- **Phase Discipline:** Strictly follow current phase objectives. Never jump to future phases, implement ahead of approval, or preload unapproved libraries.
+- **Package Management:** Do not install, upgrade, or remove packages without explicit developer direction or approval.
+- **Git Restrictions:**
+  - Do not automatically commit or push to Git repositories.
+  - Never automatically modify `.gitignore`.
+  - Never discard user changes or force-rewrite git history.
+
+## 6. Documentation & Update Tracking
+
+You must actively maintain the project's changelog. After every completed task, error resolution, or feature addition, you must append an entry to the `update_details.md` file.
+
+**Format and Rules for `update_details.md`:**
+
+- Do NOT read or rewrite the whole file every time. Simply append the new data at the very end of the document.
+- Include a Date and Time stamp for the update.
+- Use the following format:
+  - **Issue:** (Briefly describe the exact issue or bottleneck that was solved)
+  - **Type:** (Specify category: e.g., Error, Bug, UI, Performance, Architecture, Feature, Dependency)
+  - **Solution:** (Explain how the issue was solved. Maximum 10 lines.)
+- Append exactly `---` on a new line after the update details to close the entry.
+- Do not include any conversational filler in the file.
+- let /scripts in .gitignore
