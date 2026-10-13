@@ -366,6 +366,10 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
           }`}
           onClick={(e) => e.stopPropagation()}
           onDoubleClick={(e) => e.stopPropagation()}
+          onMouseEnter={onControlsMouseEnter}
+          onMouseLeave={onControlsMouseLeave}
+          onFocus={onControlsFocus}
+          onBlur={onControlsBlur}
         >
           <div className="flex items-center gap-3 min-w-0">
             <button
@@ -482,7 +486,9 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
       <div
         className={
           isFullscreen
-            ? 'player-container fullscreen-player-container absolute inset-0 w-full h-full bg-black border-0 border-none rounded-none shadow-none overflow-hidden select-none cursor-pointer'
+            ? `player-container fullscreen-player-container absolute inset-0 w-full h-full bg-black border-0 border-none rounded-none shadow-none overflow-hidden select-none ${
+                !showOverlay ? 'cursor-none' : 'cursor-pointer'
+              }`
             : 'player-container w-full flex-1 min-h-0 relative select-none bg-black rounded-xl border border-border/60 overflow-hidden shadow-xl cursor-pointer'
         }
         onClick={onVideoTapOrClick}
@@ -492,7 +498,9 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
         {/* Full-bleed Native Video Viewport: Never resized or squeezed by overlay controls */}
         <div
           id="nosved-video-viewport"
-          className="player-video-viewport absolute inset-0 w-full h-full flex items-center justify-center bg-black overflow-hidden z-10"
+          className={`player-video-viewport absolute inset-0 w-full h-full flex items-center justify-center bg-black overflow-hidden z-10 ${
+            isFullscreen && !showOverlay ? 'cursor-none' : ''
+          }`}
           ref={videoViewportRef}
         >
           {playbackStatus.currentFile && (

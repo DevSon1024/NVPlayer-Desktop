@@ -26,6 +26,21 @@ export function useFullscreen({
   const inactivityTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isInteractingWithControlsRef = useRef(false);
   const isControlsFocusedRef = useRef(false);
+  const isScrubbingRef = useRef(isScrubbing);
+  const playbackStatusRef = useRef(playbackStatus);
+  const isPlayerFullscreenRef = useRef(isPlayerFullscreen);
+
+  useEffect(() => {
+    isScrubbingRef.current = isScrubbing;
+  }, [isScrubbing]);
+
+  useEffect(() => {
+    playbackStatusRef.current = playbackStatus;
+  }, [playbackStatus]);
+
+  useEffect(() => {
+    isPlayerFullscreenRef.current = isPlayerFullscreen;
+  }, [isPlayerFullscreen]);
 
   const [videoViewportEl, setVideoViewportEl] = useState<HTMLDivElement | null>(null);
   const videoViewportRef = useCallback((node: HTMLDivElement | null) => {
@@ -125,18 +140,19 @@ export function useFullscreen({
     }
     setShowOverlay(true);
 
-    if (isPlayerFullscreen) {
+    if (isPlayerFullscreenRef.current) {
+      const status = playbackStatusRef.current;
       // Keep controls visible when paused or when ended
-      if (playbackStatus.paused || playbackStatus.mediaState === 'paused' || playbackStatus.mediaState === 'ended') {
+      if (status.paused || status.mediaState === 'paused' || status.mediaState === 'ended') {
         return;
       }
       inactivityTimerRef.current = setTimeout(() => {
-        if (!isScrubbing && !isInteractingWithControlsRef.current && !isControlsFocusedRef.current) {
+        if (!isScrubbingRef.current && !isInteractingWithControlsRef.current && !isControlsFocusedRef.current) {
           setShowOverlay(false);
         }
       }, 5000);
     }
-  }, [isPlayerFullscreen, isScrubbing, playbackStatus.paused, playbackStatus.mediaState]);
+  }, []);
 
   useEffect(() => {
     if (isPlayerFullscreen) {
@@ -154,7 +170,7 @@ export function useFullscreen({
         inactivityTimerRef.current = null;
       }
     };
-  }, [isPlayerFullscreen, playbackStatus.paused, playbackStatus.mediaState, resetInactivityTimer]);
+  }, [isPlayerFullscreen, playbackStatus.paused, playbackStatus.mediaState, isScrubbing, resetInactivityTimer]);
 
   // Player Fullscreen Cinema Mode Toggling
   const handleTogglePlayerFullscreen = useCallback(async () => {
@@ -162,10 +178,16 @@ export function useFullscreen({
     setIsPlayerFullscreen(next);
     if (next) {
       setActiveTab('player');
+      setShowOverlay(true);
       if (window.nosvedAPI?.setFullscreen) {
         await window.nosvedAPI.setFullscreen(true).catch(console.error);
       }
     } else {
+      if (inactivityTimerRef.current) {
+        clearTimeout(inactivityTimerRef.current);
+        inactivityTimerRef.current = null;
+      }
+      setShowOverlay(true);
       if (window.nosvedAPI?.setFullscreen) {
         await window.nosvedAPI.setFullscreen(false).catch(console.error);
       }
@@ -174,6 +196,11 @@ export function useFullscreen({
 
   const handleExitPlayerFullscreen = useCallback(async () => {
     setIsPlayerFullscreen(false);
+    if (inactivityTimerRef.current) {
+      clearTimeout(inactivityTimerRef.current);
+      inactivityTimerRef.current = null;
+    }
+    setShowOverlay(true);
     if (window.nosvedAPI?.setFullscreen) {
       await window.nosvedAPI.setFullscreen(false).catch(console.error);
     }

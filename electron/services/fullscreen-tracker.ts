@@ -21,7 +21,15 @@ export function startFullscreenActivityTracker(getMainWindow: () => BrowserWindo
       const current = screen.getCursorScreenPoint();
       if (current.x !== lastCursorPos.x || current.y !== lastCursorPos.y) {
         lastCursorPos = current;
-        mainWindow.webContents.send('window:user-active');
+        const bounds = mainWindow.getBounds();
+        const isInside =
+          current.x >= bounds.x &&
+          current.x <= bounds.x + bounds.width &&
+          current.y >= bounds.y &&
+          current.y <= bounds.y + bounds.height;
+        if (isInside) {
+          mainWindow.webContents.send('window:user-active');
+        }
       }
     } catch {
       // Screen query may fail if displays change

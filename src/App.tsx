@@ -190,6 +190,9 @@ export const App: React.FC = () => {
         if (resumePrompt) {
           e.preventDefault();
           setResumePrompt(null);
+        } else if (isTrackModalOpen) {
+          e.preventDefault();
+          setIsTrackModalOpen(false);
         } else if (isPlayerFullscreen) {
           e.preventDefault();
           handleExitPlayerFullscreen();

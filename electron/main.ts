@@ -144,21 +144,7 @@ function createWindow(): void {
     console.warn('[Security] Blocked attempt to attach webview');
   });
 
-  // Top-level input failsafe: ensure Escape key exits fullscreen and F11 toggles whole app window fullscreen
-  mainWindow.webContents.on('before-input-event', (event, input) => {
-    if (input.type === 'keyDown') {
-      if (input.key === 'Escape') {
-        if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isFullScreen()) {
-          mainWindow.setFullScreen(false);
-        }
-      } else if (input.key === 'F11') {
-        event.preventDefault();
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.setFullScreen(!mainWindow.isFullScreen());
-        }
-      }
-    }
-  });
+
 
   mainWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
     console.log(`[Renderer Log (level ${level})]: ${message} (${sourceId}:${line})`);
