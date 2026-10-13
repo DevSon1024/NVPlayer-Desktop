@@ -259,6 +259,42 @@ export function usePlaylists({ activeTab, playbackStatus, onPlayFile }: UsePlayl
     }
   };
 
+  const handlePickFilesForPlaylist = useCallback(
+    async (playlistId: string) => {
+      if (!window.nosvedAPI?.pickFilesForPlaylist) return;
+      try {
+        const res = await window.nosvedAPI.pickFilesForPlaylist(playlistId);
+        if (!res.canceled && res.addedCount > 0) {
+          await refreshPlaylists();
+          if (selectedPlaylistId === playlistId) {
+            await refreshPlaylistDetails(playlistId);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to pick files for playlist:', err);
+      }
+    },
+    [refreshPlaylists, refreshPlaylistDetails, selectedPlaylistId]
+  );
+
+  const handleAddFilesToPlaylist = useCallback(
+    async (playlistId: string, filePaths: string[]) => {
+      if (!window.nosvedAPI?.addFilesToPlaylist || filePaths.length === 0) return;
+      try {
+        const res = await window.nosvedAPI.addFilesToPlaylist(playlistId, filePaths);
+        if (res.success && res.addedCount > 0) {
+          await refreshPlaylists();
+          if (selectedPlaylistId === playlistId) {
+            await refreshPlaylistDetails(playlistId);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to add files to playlist:', err);
+      }
+    },
+    [refreshPlaylists, refreshPlaylistDetails, selectedPlaylistId]
+  );
+
   return {
     playlists,
     selectedPlaylistId,
@@ -291,6 +327,8 @@ export function usePlaylists({ activeTab, playbackStatus, onPlayFile }: UsePlayl
     handleDeletePlaylist,
     handleAddMediaToPlaylist,
     handleAddFromLibrary,
+    handlePickFilesForPlaylist,
+    handleAddFilesToPlaylist,
     handleRemovePlaylistItem,
     handleReorderItem,
     handlePlayPlaylistItem,

@@ -924,6 +924,43 @@ export class MediaDatabase {
     return true;
   }
 
+  public addFilesToPlaylist(
+    playlistId: string,
+    filePaths: string[]
+  ): { addedCount: number; mediaRecords: MediaRecord[] } {
+    if (!this.db || !this.funcs || filePaths.length === 0) {
+      return { addedCount: 0, mediaRecords: [] };
+    }
+
+    const mediaRecords: MediaRecord[] = [];
+    const mediaIds: string[] = [];
+
+    for (const rawPath of filePaths) {
+      if (!rawPath || typeof rawPath !== 'string') continue;
+      try {
+        const resolved = path.resolve(rawPath);
+        if (!fs.existsSync(resolved)) continue;
+        const stat = fs.statSync(resolved);
+        if (!stat.isFile()) continue;
+
+        const record = this.addOrUpdateMedia(resolved);
+        if (record) {
+          mediaRecords.push(record);
+          mediaIds.push(record.id);
+        }
+      } catch (err) {
+        console.warn('[MediaDatabase] Error adding file to playlist:', rawPath, err);
+      }
+    }
+
+    if (mediaIds.length === 0) {
+      return { addedCount: 0, mediaRecords: [] };
+    }
+
+    const success = this.addItemsToPlaylist(playlistId, mediaIds);
+    return { addedCount: success ? mediaIds.length : 0, mediaRecords };
+  }
+
   public removeItemFromPlaylist(playlistId: string, mediaId: string): boolean {
     if (!this.db || !this.funcs) return false;
     const stmtPtr: unknown[] = [null];

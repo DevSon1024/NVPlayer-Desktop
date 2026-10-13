@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, webUtils } from 'electron';
 
 /**
  * Public, minimal API exposed to the renderer via contextBridge.
@@ -181,6 +181,9 @@ export interface NosvedAPI {
   addItemsToPlaylist: (playlistId: string, mediaIds: string[]) => Promise<boolean>;
   removeItemFromPlaylist: (playlistId: string, mediaId: string) => Promise<boolean>;
   reorderPlaylistItems: (playlistId: string, mediaIds: string[]) => Promise<boolean>;
+  pickFilesForPlaylist: (playlistId: string) => Promise<{ canceled: boolean; addedCount: number }>;
+  addFilesToPlaylist: (playlistId: string, filePaths: string[]) => Promise<{ success: boolean; addedCount: number }>;
+  getPathForFile: (file: File) => string;
   extractMetadata: (mediaId: string) => Promise<MediaItemPayload | null>;
   cleanupThumbnails: () => Promise<void>;
 
@@ -287,6 +290,18 @@ const api: NosvedAPI = {
   addItemsToPlaylist: (playlistId: string, mediaIds: string[]) => ipcRenderer.invoke('playlist:add-items', playlistId, mediaIds),
   removeItemFromPlaylist: (playlistId: string, mediaId: string) => ipcRenderer.invoke('playlist:remove-item', playlistId, mediaId),
   reorderPlaylistItems: (playlistId: string, mediaIds: string[]) => ipcRenderer.invoke('playlist:reorder-items', playlistId, mediaIds),
+  pickFilesForPlaylist: (playlistId: string) => ipcRenderer.invoke('playlist:pick-files', playlistId),
+  addFilesToPlaylist: (playlistId: string, filePaths: string[]) => ipcRenderer.invoke('playlist:add-files', playlistId, filePaths),
+  getPathForFile: (file: File) => {
+    try {
+      if (webUtils && typeof webUtils.getPathForFile === 'function') {
+        return webUtils.getPathForFile(file);
+      }
+    } catch {
+      // Fallback if webUtils fails
+    }
+    return (file as unknown as { path?: string }).path || '';
+  },
   extractMetadata: (mediaId: string) => ipcRenderer.invoke('metadata:extract-media', mediaId),
   cleanupThumbnails: () => ipcRenderer.invoke('metadata:cleanup-cache'),
 

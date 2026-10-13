@@ -135,6 +135,8 @@ export const App: React.FC = () => {
     handleDeletePlaylist,
     handleAddMediaToPlaylist,
     handleAddFromLibrary,
+    handlePickFilesForPlaylist,
+    handleAddFilesToPlaylist,
     handleRemovePlaylistItem,
     handleReorderItem,
     handlePlayPlaylistItem,
@@ -422,6 +424,8 @@ export const App: React.FC = () => {
                 setSelectedLibraryIds([]);
                 setIsAddFromLibraryOpen(true);
               }}
+              onPickFiles={handlePickFilesForPlaylist}
+              onAddFiles={handleAddFilesToPlaylist}
               onPlayPlaylistItem={handlePlayPlaylistItem}
               onReorderItem={handleReorderItem}
               onRemovePlaylistItem={handleRemovePlaylistItem}

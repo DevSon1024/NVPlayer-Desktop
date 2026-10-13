@@ -1,7 +1,9 @@
-import React from 'react';
+import React, { useState, useRef } from 'react';
 import {
   ListMusic,
   Plus,
+  FolderPlus,
+  UploadCloud,
   Edit2,
   Trash2,
   Play,
@@ -24,10 +26,49 @@ interface PlaylistsViewProps {
   onOpenRenamePlaylistModal: (pl: Playlist) => void;
   onOpenDeletePlaylistModal: (pl: Playlist) => void;
   onOpenAddFromLibraryModal: () => void;
+  onPickFiles: (playlistId: string) => Promise<void> | void;
+  onAddFiles: (playlistId: string, filePaths: string[]) => Promise<void> | void;
   onPlayPlaylistItem: (playlist: Playlist, items: PlaylistItem[], index: number) => void;
   onReorderItem: (playlistId: string, fromIndex: number, toIndex: number) => void;
   onRemovePlaylistItem: (playlistId: string, mediaId: string) => void;
 }
+
+const SUPPORTED_VIDEO_EXTENSIONS = new Set([
+  '.mp4',
+  '.mkv',
+  '.avi',
+  '.mov',
+  '.webm',
+  '.flv',
+  '.ts',
+  '.m4v',
+]);
+
+const extractVideoFilePaths = (fileList: FileList): string[] => {
+  const result: string[] = [];
+  for (let i = 0; i < fileList.length; i++) {
+    const file = fileList[i];
+    if (!file) continue;
+    let path = '';
+    if (window.nosvedAPI?.getPathForFile) {
+      try {
+        path = window.nosvedAPI.getPathForFile(file);
+      } catch {
+        // Fallback
+      }
+    }
+    if (!path && (file as unknown as { path?: string }).path) {
+      path = (file as unknown as { path: string }).path;
+    }
+    if (path) {
+      const ext = path.slice(path.lastIndexOf('.')).toLowerCase();
+      if (SUPPORTED_VIDEO_EXTENSIONS.has(ext)) {
+        result.push(path);
+      }
+    }
+  }
+  return result;
+};
 
 export const PlaylistsView: React.FC<PlaylistsViewProps> = ({
   playlists,
@@ -39,10 +80,54 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({
   onOpenRenamePlaylistModal,
   onOpenDeletePlaylistModal,
   onOpenAddFromLibraryModal,
+  onPickFiles,
+  onAddFiles,
   onPlayPlaylistItem,
   onReorderItem,
   onRemovePlaylistItem,
 }) => {
+  const [isDraggingOverDetails, setIsDraggingOverDetails] = useState(false);
+  const [dragOverPlaylistId, setDragOverPlaylistId] = useState<string | null>(null);
+  const dragCounterRef = useRef(0);
+
+  const handleDetailsDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current += 1;
+    if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
+      setIsDraggingOverDetails(true);
+    }
+  };
+
+  const handleDetailsDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = 'copy';
+  };
+
+  const handleDetailsDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current -= 1;
+    if (dragCounterRef.current <= 0) {
+      dragCounterRef.current = 0;
+      setIsDraggingOverDetails(false);
+    }
+  };
+
+  const handleDetailsDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current = 0;
+    setIsDraggingOverDetails(false);
+
+    if (!selectedPlaylistDetails) return;
+    const paths = extractVideoFilePaths(e.dataTransfer.files);
+    if (paths.length > 0) {
+      await onAddFiles(selectedPlaylistDetails.playlist.id, paths);
+    }
+  };
+
   return (
     <div className="flex-1 min-h-0 overflow-hidden flex h-full w-full select-none">
       {/* Playlists Sidebar */}
@@ -69,52 +154,116 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({
           </div>
         ) : (
           <div className="flex flex-col gap-1.5">
-            {playlists.map((pl) => (
-              <div
-                key={pl.id}
-                className={`rounded-xl p-3 border transition-all cursor-pointer flex items-center justify-between gap-2 group ${
-                  selectedPlaylistId === pl.id
-                    ? 'bg-primary-container text-on-primary-container border-primary/30 shadow-sm'
-                    : 'bg-surface border-border hover:bg-surface-elevated text-foreground'
-                }`}
-                onClick={() => onSelectPlaylist(pl.id)}
-              >
-                <div className="flex flex-col min-w-0 flex-1">
-                  <span className="text-sm font-semibold truncate" title={pl.name}>
-                    {pl.name}
-                  </span>
-                  <span className="text-[11px] opacity-75">
-                    {pl.itemCount ?? 0} {pl.itemCount === 1 ? 'video' : 'videos'}
-                  </span>
-                </div>
-                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
-                  <button
-                    type="button"
-                    className="p-1 rounded text-muted-foreground hover:text-primary hover:bg-surface-muted border-none bg-transparent cursor-pointer"
-                    onClick={() => onOpenRenamePlaylistModal(pl)}
-                    title="Rename Playlist"
-                    aria-label="Rename Playlist"
+            {playlists.map((pl) => {
+              const isDragTarget = dragOverPlaylistId === pl.id;
+              const isSelected = selectedPlaylistId === pl.id;
+
+              return (
+                <div
+                  key={pl.id}
+                  className={`rounded-xl p-3 border transition-all cursor-pointer flex items-center justify-between gap-2 group relative ${
+                    isDragTarget
+                      ? 'ring-2 ring-primary border-primary bg-primary/20 scale-[1.02] shadow-md'
+                      : isSelected
+                      ? 'bg-primary-container text-on-primary-container border-primary/30 shadow-sm'
+                      : 'bg-surface border-border hover:bg-surface-elevated text-foreground'
+                  }`}
+                  onClick={() => onSelectPlaylist(pl.id)}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.dataTransfer.dropEffect = 'copy';
+                    if (dragOverPlaylistId !== pl.id) {
+                      setDragOverPlaylistId(pl.id);
+                    }
+                  }}
+                  onDragLeave={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (dragOverPlaylistId === pl.id) {
+                      setDragOverPlaylistId(null);
+                    }
+                  }}
+                  onDrop={async (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setDragOverPlaylistId(null);
+                    const paths = extractVideoFilePaths(e.dataTransfer.files);
+                    if (paths.length > 0) {
+                      await onAddFiles(pl.id, paths);
+                    }
+                  }}
+                >
+                  <div className="flex flex-col min-w-0 flex-1">
+                    <span className="text-sm font-semibold truncate" title={pl.name}>
+                      {pl.name}
+                    </span>
+                    {isDragTarget ? (
+                      <span className="text-[11px] text-primary font-semibold flex items-center gap-1 animate-pulse">
+                        <UploadCloud size={12} />
+                        Drop to add videos
+                      </span>
+                    ) : (
+                      <span className="text-[11px] opacity-75">
+                        {pl.itemCount ?? 0} {pl.itemCount === 1 ? 'video' : 'videos'}
+                      </span>
+                    )}
+                  </div>
+                  <div
+                    className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                    onClick={(e) => e.stopPropagation()}
                   >
-                    <Edit2 size={12} />
-                  </button>
-                  <button
-                    type="button"
-                    className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 border-none bg-transparent cursor-pointer"
-                    onClick={() => onOpenDeletePlaylistModal(pl)}
-                    title="Delete Playlist"
-                    aria-label="Delete Playlist"
-                  >
-                    <Trash2 size={12} />
-                  </button>
+                    <button
+                      type="button"
+                      className="p-1 rounded text-muted-foreground hover:text-primary hover:bg-surface-muted border-none bg-transparent cursor-pointer"
+                      onClick={() => onOpenRenamePlaylistModal(pl)}
+                      title="Rename Playlist"
+                      aria-label="Rename Playlist"
+                    >
+                      <Edit2 size={12} />
+                    </button>
+                    <button
+                      type="button"
+                      className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 border-none bg-transparent cursor-pointer"
+                      onClick={() => onOpenDeletePlaylistModal(pl)}
+                      title="Delete Playlist"
+                      aria-label="Delete Playlist"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
 
       {/* Playlist Details Pane */}
-      <div className="flex-1 flex flex-col overflow-y-auto p-7 gap-6 max-w-[1200px]">
+      <div
+        className="flex-1 flex flex-col overflow-y-auto p-7 gap-6 max-w-[1200px] relative"
+        onDragEnter={handleDetailsDragEnter}
+        onDragOver={handleDetailsDragOver}
+        onDragLeave={handleDetailsDragLeave}
+        onDrop={handleDetailsDrop}
+      >
+        {/* Drag and Drop Backdrop Overlay */}
+        {isDraggingOverDetails && selectedPlaylistDetails && (
+          <div className="absolute inset-4 rounded-2xl border-2 border-dashed border-primary bg-background/90 backdrop-blur-md z-30 flex flex-col items-center justify-center gap-3 pointer-events-none shadow-2xl">
+            <div className="w-16 h-16 rounded-2xl bg-primary text-primary-foreground flex items-center justify-center shadow-lg">
+              <UploadCloud size={32} />
+            </div>
+            <div className="text-center">
+              <p className="text-base font-bold text-foreground">
+                Drop videos to add to {selectedPlaylistDetails.playlist.name}
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Release mouse to add video files directly into this playlist
+              </p>
+            </div>
+          </div>
+        )}
+
         {!selectedPlaylistDetails ? (
           <div className="flex-1 flex flex-col items-center justify-center gap-4 text-center p-12 text-muted-foreground my-auto">
             <div className="w-16 h-16 rounded-2xl bg-surface-muted border border-border flex items-center justify-center text-primary/60">
@@ -163,12 +312,23 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({
                 </button>
                 <button
                   type="button"
-                  className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-surface-elevated hover:bg-surface-muted text-foreground border border-border font-medium text-sm transition-colors cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-surface-elevated hover:bg-surface-muted text-foreground border border-border font-medium text-sm transition-colors cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-primary shadow-sm"
+                  onClick={() => onPickFiles(selectedPlaylistDetails.playlist.id)}
+                  title="Open Explorer to select videos to add"
+                  aria-label="Add videos from storage"
+                >
+                  <FolderPlus size={15} className="text-primary" />
+                  <span>Add Videos</span>
+                </button>
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-surface hover:bg-surface-elevated text-muted-foreground hover:text-foreground border border-border font-medium text-xs transition-colors cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-primary"
                   onClick={onOpenAddFromLibraryModal}
+                  title="Select videos from your library"
                   aria-label="Add videos from library"
                 >
                   <Plus size={14} />
-                  <span>Add Videos</span>
+                  <span>From Library</span>
                 </button>
               </div>
             </div>
@@ -179,15 +339,27 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({
                   <Video size={36} />
                 </div>
                 <h3 className="text-lg font-semibold text-foreground">Playlist is Empty</h3>
-                <p className="text-sm max-w-sm">Add media items from your library to start building this playlist.</p>
-                <button
-                  type="button"
-                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-primary-foreground font-semibold text-sm shadow hover:scale-[1.02] active:scale-[0.98] transition-transform cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-primary border-none"
-                  onClick={onOpenAddFromLibraryModal}
-                >
-                  <Plus size={16} />
-                  <span>Add Videos from Library</span>
-                </button>
+                <p className="text-sm max-w-sm">
+                  Add video files from storage, drag & drop files directly here, or select from your library.
+                </p>
+                <div className="flex items-center gap-3 mt-1">
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-primary-foreground font-semibold text-sm shadow hover:scale-[1.02] active:scale-[0.98] transition-transform cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-primary border-none"
+                    onClick={() => onPickFiles(selectedPlaylistDetails.playlist.id)}
+                  >
+                    <FolderPlus size={16} />
+                    <span>Add Videos from Storage</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-surface-elevated hover:bg-surface-muted text-foreground border border-border font-medium text-sm transition-colors cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                    onClick={onOpenAddFromLibraryModal}
+                  >
+                    <Plus size={15} />
+                    <span>From Library</span>
+                  </button>
+                </div>
               </div>
             ) : (
               <div className="flex flex-col gap-2">
