@@ -160,6 +160,7 @@ export interface NosvedAPI {
   toggleFullscreen: () => Promise<boolean>;
   setFullscreen: (fullscreen: boolean) => Promise<boolean>;
   isFullscreen: () => Promise<boolean>;
+  setTitleBarTheme: (themeMode: string, isAmoled?: boolean) => Promise<boolean>;
   onFullscreenChange: (callback: (fullscreen: boolean) => void) => () => void;
   onUserActive: (callback: () => void) => () => void;
   onWindowRestored: (callback: () => void) => () => void;
@@ -238,6 +239,8 @@ const api: NosvedAPI = {
   toggleFullscreen: () => ipcRenderer.invoke('window:toggle-fullscreen'),
   setFullscreen: (fullscreen: boolean) => ipcRenderer.invoke('window:set-fullscreen', fullscreen),
   isFullscreen: () => ipcRenderer.invoke('window:is-fullscreen'),
+  setTitleBarTheme: (themeMode: string, isAmoled?: boolean) =>
+    ipcRenderer.invoke('window:set-title-bar-theme', themeMode, isAmoled),
   onFullscreenChange: (callback) => {
     const handler = (_event: Electron.IpcRendererEvent, isFs: unknown) => {
       callback(Boolean(isFs));

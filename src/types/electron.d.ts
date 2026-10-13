@@ -154,6 +154,7 @@ export interface NosvedAPI {
   toggleFullscreen: () => Promise<boolean>;
   setFullscreen: (fullscreen: boolean) => Promise<boolean>;
   isFullscreen: () => Promise<boolean>;
+  setTitleBarTheme: (themeMode: string, isAmoled?: boolean) => Promise<boolean>;
   onFullscreenChange: (callback: (fullscreen: boolean) => void) => () => void;
   onUserActive: (callback: () => void) => () => void;
   onWindowRestored: (callback: () => void) => () => void;

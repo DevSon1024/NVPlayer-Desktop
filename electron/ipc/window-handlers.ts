@@ -1,6 +1,7 @@
 import { ipcMain, BrowserWindow } from 'electron';
 import { validateIpcSender } from './ipc-validator';
 import type { NativeVideoWindow } from '../native/video-window';
+import { applyNativeTitleBarTheme } from '../native/title-bar';
 
 export interface WindowHandlerContext {
   getMainWindow: () => BrowserWindow | null;
@@ -40,4 +41,17 @@ export function registerWindowHandlers(ctx: WindowHandlerContext): void {
     }
     return mainWindow?.isFullScreen() ?? false;
   });
+
+  ipcMain.handle('window:set-title-bar-theme', (event, themeMode: unknown, isAmoled?: unknown) => {
+    const mainWindow = ctx.getMainWindow();
+    if (!validateIpcSender(event, mainWindow, ctx.isDev)) {
+      throw new Error('Unauthorized IPC invocation: Sender validation failed');
+    }
+    if (typeof themeMode !== 'string' || !['light', 'dark', 'system'].includes(themeMode)) {
+      throw new Error('Invalid themeMode: must be "light", "dark", or "system"');
+    }
+    const amoled = typeof isAmoled === 'boolean' ? isAmoled : false;
+    return applyNativeTitleBarTheme(mainWindow, themeMode as 'light' | 'dark' | 'system', amoled);
+  });
 }
+

@@ -1,9 +1,14 @@
-import { app, BrowserWindow, session } from 'electron';
+import { app, BrowserWindow, session, nativeTheme } from 'electron';
 import path from 'node:path';
 import { NativePlayerService } from './native/player-service';
 import { NativeVideoWindow } from './native/video-window';
 import { MediaDatabase } from './database/media-db';
 import { MetadataService } from './native/metadata-service';
+import {
+  applyNativeTitleBarTheme,
+  initTitleBarThemeTracking,
+  TITLE_BAR_COLORS,
+} from './native/title-bar';
 
 import { registerThumbnailScheme, setupThumbnailProtocol } from './protocol/thumbnail-protocol';
 import {
@@ -66,12 +71,20 @@ if (process.platform === 'win32') {
 }
 
 function createWindow(): void {
+  const savedThemeMode = (mediaDb?.getSetting('themeMode') as 'light' | 'dark' | 'system') || 'system';
+  const savedIsAmoled = mediaDb?.getSetting('isAmoledTheme') === 'true';
+  const isEffectiveDark =
+    savedThemeMode === 'dark' || (savedThemeMode === 'system' && nativeTheme.shouldUseDarkColors);
+  const initialBgColor = isEffectiveDark
+    ? (savedIsAmoled ? TITLE_BAR_COLORS.amoled.bg : TITLE_BAR_COLORS.dark.bg)
+    : TITLE_BAR_COLORS.light.bg;
+
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
     minWidth: 800,
     minHeight: 560,
-    backgroundColor: '#121316',
+    backgroundColor: initialBgColor,
     title: 'Nosved Player Desktop',
     show: false,
     autoHideMenuBar: true,
@@ -84,6 +97,8 @@ function createWindow(): void {
       preload: path.join(__dirname, 'preload.js'),
     },
   });
+
+  applyNativeTitleBarTheme(mainWindow, savedThemeMode, savedIsAmoled);
 
   try {
     const nativeHwnd = mainWindow.getNativeWindowHandle().readBigInt64LE();
@@ -222,6 +237,19 @@ function createWindow(): void {
                   libraryTestResult = { error: String(e) };
                 }
 
+                let titleBarThemeResult = null;
+                try {
+                  if (typeof window.nosvedAPI?.setTitleBarTheme === 'function') {
+                    const lightRes = await window.nosvedAPI.setTitleBarTheme('light', false);
+                    const darkRes = await window.nosvedAPI.setTitleBarTheme('dark', false);
+                    const amoledRes = await window.nosvedAPI.setTitleBarTheme('dark', true);
+                    const sysRes = await window.nosvedAPI.setTitleBarTheme('system', false);
+                    titleBarThemeResult = { success: Boolean(lightRes && darkRes && amoledRes && sysRes) };
+                  }
+                } catch (e) {
+                  titleBarThemeResult = { error: String(e) };
+                }
+
                 resolve({
                   hasNosvedAPI: typeof window.nosvedAPI !== 'undefined',
                   hasProcess: typeof window.process !== 'undefined',
@@ -236,6 +264,7 @@ function createWindow(): void {
                   setVideoBoundsResult,
                   fullscreenTestResult,
                   libraryTestResult,
+                  titleBarThemeResult,
                 });
               } else if (attempts < 80) {
                 setTimeout(check, 50);
@@ -317,6 +346,7 @@ app.whenReady().then(() => {
   });
 
   registerAllIpcHandlers();
+  initTitleBarThemeTracking(getMainWindow);
   createWindow();
 
   app.on('activate', () => {

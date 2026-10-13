@@ -63,6 +63,9 @@ export function useAppSettings() {
             accent,
             parsed.isAmoledTheme
           );
+          if (window.nosvedAPI?.setTitleBarTheme) {
+            window.nosvedAPI.setTitleBarTheme(parsed.themeMode, parsed.isAmoledTheme).catch(console.error);
+          }
         } catch (err) {
           console.error('[useAppSettings] Failed to fetch settings:', err);
         }
@@ -88,6 +91,9 @@ export function useAppSettings() {
         systemAccentColor,
         settings.isAmoledTheme
       );
+      if (window.nosvedAPI?.setTitleBarTheme) {
+        window.nosvedAPI.setTitleBarTheme('system', settings.isAmoledTheme).catch(console.error);
+      }
     };
 
     if (mediaQuery.addEventListener) {
@@ -122,6 +128,13 @@ export function useAppSettings() {
         );
         return next;
       });
+      if (key === 'themeMode' || key === 'isAmoledTheme') {
+        const nextThemeMode = key === 'themeMode' ? (value as AppSettings['themeMode']) : settings.themeMode;
+        const nextAmoled = key === 'isAmoledTheme' ? Boolean(value) : settings.isAmoledTheme;
+        if (window.nosvedAPI?.setTitleBarTheme) {
+          window.nosvedAPI.setTitleBarTheme(nextThemeMode, nextAmoled).catch(console.error);
+        }
+      }
       if (window.nosvedAPI?.setSetting) {
         await window.nosvedAPI.setSetting(String(key), String(value)).catch(console.error);
       }
@@ -140,6 +153,9 @@ export function useAppSettings() {
       systemAccentColor,
       DEFAULT_SETTINGS.isAmoledTheme
     );
+    if (window.nosvedAPI?.setTitleBarTheme) {
+      window.nosvedAPI.setTitleBarTheme(DEFAULT_SETTINGS.themeMode, DEFAULT_SETTINGS.isAmoledTheme).catch(console.error);
+    }
     if (window.nosvedAPI?.resetSettings) {
       await window.nosvedAPI.resetSettings().catch(console.error);
     }
@@ -186,6 +202,9 @@ export function useAppSettings() {
       systemAccentColor,
       newSettings.isAmoledTheme
     );
+    if (window.nosvedAPI?.setTitleBarTheme) {
+      window.nosvedAPI.setTitleBarTheme(newSettings.themeMode, newSettings.isAmoledTheme).catch(console.error);
+    }
     if (window.nosvedAPI.setAllSettings) {
       await window.nosvedAPI.setAllSettings(serializeSettingsToRaw(newSettings));
     }
