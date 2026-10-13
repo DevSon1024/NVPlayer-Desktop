@@ -1,26 +1,33 @@
-*.iml
-.kotlin
-.gradle
-**/build/
-xcuserdata
-!src/**/build/
-local.properties
-.idea
-.DS_Store
-captures
-.externalNativeBuild
-.cxx
-*.xcodeproj/*
-!*.xcodeproj/project.pbxproj
-!*.xcodeproj/xcshareddata/
-!*.xcodeproj/project.xcworkspace/
-!*.xcworkspace/contents.xcworkspacedata
-**/xcshareddata/WorkspaceSettings.xcsettings
+# Dependencies
 node_modules/
-/native/
-*Test.kt
+
+# Production and intermediate build outputs
+dist/
+dist-electron/
+out/
+build/
+.vite/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Environment and IDE files
+.env
+.env.local
+.env.*.local
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+
+# OS metadata
+Thumbs.db
+[Dd]esktop.ini
+.DS_Store
+*.dll
 update_details.md
-/*.txt
-/*.log
-/*.mp4
-/*.mkv
+scripts/
