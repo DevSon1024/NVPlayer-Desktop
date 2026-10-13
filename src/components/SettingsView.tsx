@@ -16,12 +16,16 @@ import {
   Sparkles,
   CheckCircle2,
   AlertCircle,
+  Film,
+  SlidersHorizontal,
+  Trash2,
 } from 'lucide-react';
 import type { PlaybackStatus } from '../types/electron';
 import {
   AppSettings,
   AVAILABLE_PALETTES,
   AccentPalette,
+  THUMBNAIL_STRATEGIES,
 } from '../types/settings';
 
 interface SettingsViewProps {
@@ -34,6 +38,8 @@ interface SettingsViewProps {
   nativePoc: { success: boolean; stage: string; apiVersion?: { formatted: string } } | null;
   playerStatus: { state: string; apiVersion?: { formatted: string }; error?: string } | null;
   isFullscreen: boolean;
+  systemAccentColor?: string | null;
+  onClearThumbnailCache?: () => Promise<boolean>;
 }
 
 type SettingsSection = 'appearance' | 'player' | 'engine' | 'subtitles' | 'backup' | 'diagnostics';
@@ -84,10 +90,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   nativePoc,
   playerStatus,
   isFullscreen,
+  systemAccentColor,
+  onClearThumbnailCache,
 }) => {
   const [activeSection, setActiveSection] = useState<SettingsSection>('appearance');
   const [feedbackMessage, setFeedbackMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
+  const [isClearingCache, setIsClearingCache] = useState(false);
 
   const showFeedback = (type: 'success' | 'error', text: string) => {
     setFeedbackMessage({ type, text });
@@ -232,11 +241,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <div className="flex flex-col gap-1.5 pb-3 border-b border-border">
               <h3 className="text-xl font-bold text-foreground">Appearance & Themes</h3>
               <p className="text-xs text-muted-foreground leading-relaxed">
-                Customize app styling, dark mode, and color palettes inspired by Seal Android and Material Expressive.
+                Customize app styling, dark mode, AMOLED display, dynamic system accent colors, and video thumbnail frame extraction strategies.
               </p>
             </div>
 
-            {/* Theme Mode Toggle (Dark / Light / System) */}
+            {/* Theme Mode & AMOLED Display */}
             <div className="bg-surface border border-border rounded-2xl p-6 flex flex-col gap-4 shadow-sm">
               <h4 className="text-sm font-semibold text-foreground">Theme Mode</h4>
               <p className="text-xs text-muted-foreground -mt-2 leading-relaxed">
@@ -283,6 +292,47 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <span>System Default</span>
                 </button>
               </div>
+
+              <div className="pt-2 border-t border-border/40">
+                <SettingToggleRow
+                  label="Pure AMOLED Theme"
+                  desc="Enable pitch black (#000000) background and surfaces for OLED displays in Dark Mode"
+                  checked={settings.isAmoledTheme}
+                  onChange={(checked) => onUpdateSetting('isAmoledTheme', checked)}
+                />
+              </div>
+            </div>
+
+            {/* Dynamic System Color (Windows Accent) */}
+            <div className="bg-surface border border-border rounded-2xl p-6 flex flex-col gap-4 shadow-sm">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="text-sm font-semibold text-foreground">Dynamic System Color</h4>
+                  <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+                    Derive application primary accents dynamically from Windows wallpaper and system accent.
+                  </p>
+                </div>
+                {systemAccentColor && (
+                  <div className="flex items-center gap-2 px-3 py-1 rounded-full border border-border bg-surface-elevated text-xs">
+                    <div
+                      className="w-3.5 h-3.5 rounded-full border border-black/20"
+                      style={{ backgroundColor: systemAccentColor }}
+                    />
+                    <span className="font-mono text-[11px] text-muted-foreground">{systemAccentColor}</span>
+                  </div>
+                )}
+              </div>
+
+              <SettingToggleRow
+                label="Use Windows System Accent Color"
+                desc={
+                  systemAccentColor
+                    ? `Derive accent colors directly from Windows theme palette (${systemAccentColor})`
+                    : 'Derive accent colors directly from Windows theme palette (available on Windows)'
+                }
+                checked={settings.dynamicColor}
+                onChange={(checked) => onUpdateSetting('dynamicColor', checked)}
+              />
             </div>
 
             {/* Custom Palettes Grid */}
@@ -294,15 +344,22 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     Choose custom design colors and tints for buttons, highlights, and surfaces.
                   </p>
                 </div>
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-primary/10 text-primary border border-primary/20">
-                  <Sparkles size={13} />
-                  <span>{AVAILABLE_PALETTES.length} Palettes</span>
-                </span>
+                <div className="flex items-center gap-2">
+                  {settings.dynamicColor && (
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-primary-container text-on-primary-container border border-primary/30">
+                      Dynamic Active
+                    </span>
+                  )}
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-primary/10 text-primary border border-primary/20">
+                    <Sparkles size={13} />
+                    <span>{AVAILABLE_PALETTES.length} Palettes</span>
+                  </span>
+                </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3.5">
                 {AVAILABLE_PALETTES.map((pal) => {
-                  const isSelected = settings.accentPalette === pal.id;
+                  const isSelected = !settings.dynamicColor && settings.accentPalette === pal.id;
                   return (
                     <div
                       key={pal.id}
@@ -311,10 +368,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           ? 'border-primary ring-1 ring-primary bg-surface-elevated shadow-md'
                           : 'border-border bg-surface-elevated/50 hover:border-primary/50 hover:bg-surface-elevated'
                       }`}
-                      onClick={() => onUpdateSetting('accentPalette', pal.id as AccentPalette)}
+                      onClick={() => {
+                        if (settings.dynamicColor) {
+                          onUpdateSetting('dynamicColor', false);
+                        }
+                        onUpdateSetting('accentPalette', pal.id as AccentPalette);
+                      }}
                       role="button"
                       tabIndex={0}
-                      onKeyDown={(e) => e.key === 'Enter' && onUpdateSetting('accentPalette', pal.id as AccentPalette)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          if (settings.dynamicColor) onUpdateSetting('dynamicColor', false);
+                          onUpdateSetting('accentPalette', pal.id as AccentPalette);
+                        }
+                      }}
                     >
                       <div
                         className="w-10 h-10 rounded-xl relative shrink-0 flex items-center justify-center border border-white/10 shadow-sm"
@@ -346,6 +413,130 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   );
                 })}
               </div>
+            </div>
+
+            {/* Video Thumbnails & Strategic Frame Extraction */}
+            <div className="bg-surface border border-border rounded-2xl p-6 flex flex-col gap-5 shadow-sm">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="text-sm font-semibold text-foreground">Thumbnails & Frame Extraction</h4>
+                  <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+                    Configure preview thumbnail generation and native mpv strategic frame extraction.
+                  </p>
+                </div>
+                <Film size={20} className="text-primary/70" />
+              </div>
+
+              <SettingToggleRow
+                label="Show Video Thumbnails"
+                desc="Display generated preview thumbnail frames across library, playlists, and home screens. When turned off, standard video placeholder icons are displayed."
+                checked={settings.showThumbnails}
+                onChange={(checked) => onUpdateSetting('showThumbnails', checked)}
+              />
+
+              {settings.showThumbnails && (
+                <div className="flex flex-col gap-4 pt-2 border-t border-border/40">
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs font-semibold text-foreground tracking-tight">Thumbnail Strategy</span>
+                    <span className="text-[11px] text-muted-foreground leading-relaxed">
+                      Choose how native libmpv extracts preview thumbnails from video files.
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {THUMBNAIL_STRATEGIES.map((strat) => {
+                      const isSelected = settings.thumbnailMode === strat.id;
+                      return (
+                        <div
+                          key={strat.id}
+                          className={`flex items-start gap-3 p-3.5 rounded-xl border cursor-pointer transition select-none ${
+                            isSelected
+                              ? 'border-primary ring-1 ring-primary bg-surface-elevated shadow-sm'
+                              : 'border-border bg-surface-elevated/40 hover:border-primary/50 hover:bg-surface-elevated'
+                          }`}
+                          onClick={() => onUpdateSetting('thumbnailMode', strat.id)}
+                          role="button"
+                          tabIndex={0}
+                          onKeyDown={(e) => e.key === 'Enter' && onUpdateSetting('thumbnailMode', strat.id)}
+                        >
+                          <div
+                            className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 border transition ${
+                              isSelected
+                                ? 'bg-primary text-primary-foreground border-primary'
+                                : 'bg-surface border-border text-muted-foreground'
+                            }`}
+                          >
+                            {isSelected ? <Check size={16} /> : <Film size={16} />}
+                          </div>
+                          <div className="flex flex-col min-w-0 flex-1">
+                            <span className="text-xs font-semibold text-foreground">{strat.name}</span>
+                            <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">{strat.description}</p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Frame Position Slider */}
+                  {settings.thumbnailMode === 'frame_position' && (
+                    <div className="flex flex-col gap-2.5 p-4 rounded-xl bg-surface-elevated/60 border border-border mt-1">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <SlidersHorizontal size={15} className="text-primary" />
+                          <span className="text-xs font-semibold text-foreground">Frame Position Ratio</span>
+                        </div>
+                        <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-bold bg-primary text-primary-foreground shadow-sm">
+                          {Math.round(settings.thumbnailFramePosition)}%
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min="0"
+                        max="100"
+                        step="1"
+                        value={settings.thumbnailFramePosition}
+                        onChange={(e) => onUpdateSetting('thumbnailFramePosition', Number(e.target.value))}
+                        className="w-full h-2 bg-surface-dim rounded-lg appearance-none cursor-pointer accent-primary"
+                      />
+                      <div className="flex justify-between text-[10px] text-muted-foreground font-mono">
+                        <span>0% (First Frame)</span>
+                        <span>50% (Midpoint)</span>
+                        <span>100% (End of Video)</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Clear Thumbnail Cache Button */}
+                  <div className="flex items-center justify-between gap-4 pt-3 border-t border-border/40">
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-xs font-semibold text-foreground">Clear Thumbnail Cache</span>
+                      <span className="text-[11px] text-muted-foreground">
+                        Delete stored thumbnail files and database cache keys to re-extract with the current strategy.
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={isClearingCache}
+                      onClick={async () => {
+                        if (!onClearThumbnailCache) return;
+                        setIsClearingCache(true);
+                        try {
+                          await onClearThumbnailCache();
+                          showFeedback('success', 'Thumbnail cache cleared successfully.');
+                        } catch {
+                          showFeedback('error', 'Failed to clear thumbnail cache.');
+                        } finally {
+                          setIsClearingCache(false);
+                        }
+                      }}
+                      className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-destructive/10 text-destructive border border-destructive/20 hover:bg-destructive hover:text-destructive-foreground text-xs font-semibold transition cursor-pointer disabled:opacity-50 shrink-0"
+                    >
+                      <Trash2 size={14} />
+                      <span>{isClearingCache ? 'Clearing...' : 'Clear Cache'}</span>
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* UI Contrast & Density */}

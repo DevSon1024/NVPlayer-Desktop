@@ -45,4 +45,19 @@ export function registerMetadataHandlers(ctx: MetadataHandlerContext): void {
     }
     metadataService.cleanupOrphanedThumbnails(activeKeys);
   });
+
+  ipcMain.handle('metadata:clear-cache', (event) => {
+    if (!validateIpcSender(event, ctx.getMainWindow(), ctx.isDev)) {
+      throw new Error('Unauthorized IPC invocation: Sender validation failed');
+    }
+    const mediaDb = ctx.getMediaDb();
+    const metadataService = ctx.getMetadataService();
+    if (metadataService) {
+      metadataService.clearAllThumbnails();
+    }
+    if (mediaDb) {
+      mediaDb.clearAllThumbnailKeys();
+    }
+    return true;
+  });
 }

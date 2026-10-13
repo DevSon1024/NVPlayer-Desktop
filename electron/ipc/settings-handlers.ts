@@ -1,5 +1,5 @@
 import fs from 'node:fs';
-import { dialog, ipcMain, BrowserWindow } from 'electron';
+import { dialog, ipcMain, BrowserWindow, systemPreferences } from 'electron';
 import { validateIpcSender } from './ipc-validator';
 import type { MediaDatabase } from '../database/media-db';
 
@@ -10,6 +10,23 @@ export interface SettingsHandlerContext {
 }
 
 export function registerSettingsHandlers(ctx: SettingsHandlerContext): void {
+  ipcMain.handle('settings:get-system-accent-color', (event) => {
+    if (!validateIpcSender(event, ctx.getMainWindow(), ctx.isDev)) {
+      throw new Error('Unauthorized IPC invocation: Sender validation failed');
+    }
+    try {
+      if (process.platform === 'win32' && systemPreferences.getAccentColor) {
+        const hex = systemPreferences.getAccentColor();
+        if (hex && hex.length >= 6) {
+          return `#${hex.slice(0, 6)}`;
+        }
+      }
+    } catch (err) {
+      console.warn('[Settings] Failed to query system accent color:', err);
+    }
+    return null;
+  });
+
   ipcMain.handle('settings:get-all', (event) => {
     if (!validateIpcSender(event, ctx.getMainWindow(), ctx.isDev)) {
       throw new Error('Unauthorized IPC invocation: Sender validation failed');

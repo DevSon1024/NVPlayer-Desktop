@@ -31,6 +31,7 @@ interface PlaylistsViewProps {
   onPlayPlaylistItem: (playlist: Playlist, items: PlaylistItem[], index: number) => void;
   onReorderItem: (playlistId: string, fromIndex: number, toIndex: number) => void;
   onRemovePlaylistItem: (playlistId: string, mediaId: string) => void;
+  showThumbnails?: boolean;
 }
 
 const SUPPORTED_VIDEO_EXTENSIONS = new Set([
@@ -75,6 +76,7 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({
   selectedPlaylistId,
   selectedPlaylistDetails,
   activePlaylist,
+  showThumbnails = true,
   onSelectPlaylist,
   onOpenNewPlaylistModal,
   onOpenRenamePlaylistModal,
@@ -376,7 +378,7 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({
                     >
                       <span className="text-xs font-mono text-muted-foreground w-6 text-center">{idx + 1}</span>
                       <div className="w-16 h-10 rounded-lg bg-surface-dim overflow-hidden shrink-0 flex items-center justify-center relative">
-                        {item.media?.thumbnailKey ? (
+                        {showThumbnails && item.media?.thumbnailKey ? (
                           <img
                             src={`nosved-thumb://${item.media.thumbnailKey}`}
                             alt={item.media.fileName}

@@ -1,13 +1,49 @@
 export type ThemeMode = 'dark' | 'light' | 'system';
 
 export type AccentPalette =
+  | 'cinematic'
+  | 'blue'
+  | 'emerald'
+  | 'sunset'
+  | 'rose'
+  | 'midnight'
   | 'default'
   | 'seal'
   | 'amoled'
   | 'nord'
   | 'catppuccin'
-  | 'sunset'
   | 'ocean';
+
+export type ThumbnailMode = 'smart' | 'first_frame' | 'frame_position' | 'embedded';
+
+export interface ThumbnailStrategyOption {
+  id: ThumbnailMode;
+  name: string;
+  description: string;
+}
+
+export const THUMBNAIL_STRATEGIES: ThumbnailStrategyOption[] = [
+  {
+    id: 'smart',
+    name: 'Smart (embedded + 33%)',
+    description: 'Uses embedded cover art if available, otherwise extracts a high-quality frame at 33% of duration',
+  },
+  {
+    id: 'first_frame',
+    name: 'First Frame',
+    description: 'Captures the opening first frame of the video',
+  },
+  {
+    id: 'frame_position',
+    name: 'Frame Position',
+    description: 'Captures a frame at an exact percentage ratio of the video duration (configurable via slider)',
+  },
+  {
+    id: 'embedded',
+    name: 'Embedded Thumbnail',
+    description: 'Uses attached cover art picture, falling back to the first frame if none is present',
+  },
+];
 
 export interface PaletteMetadata {
   id: AccentPalette;
@@ -20,6 +56,60 @@ export interface PaletteMetadata {
 }
 
 export const AVAILABLE_PALETTES: PaletteMetadata[] = [
+  {
+    id: 'cinematic',
+    name: 'Cinematic',
+    description: 'Vibrant cyan with warm amber contrast for movie lovers',
+    accentColor: '#00bcd4',
+    secondaryColor: '#ffb300',
+    surfaceColor: '#0c1a1f',
+    sourceInspiration: 'Android Theme',
+  },
+  {
+    id: 'blue',
+    name: 'Nosved Blue',
+    description: 'Signature Nosved material blue and royal indigo accents',
+    accentColor: '#1a73e8',
+    secondaryColor: '#3949ab',
+    surfaceColor: '#0d131f',
+    sourceInspiration: 'Android Theme',
+  },
+  {
+    id: 'emerald',
+    name: 'Emerald',
+    description: 'Deep forest teal and energetic mint highlights',
+    accentColor: '#00897b',
+    secondaryColor: '#43a047',
+    surfaceColor: '#0c1a16',
+    sourceInspiration: 'Android Theme',
+  },
+  {
+    id: 'sunset',
+    name: 'Sunset',
+    description: 'Fiery coral orange blending into warm golden radiance',
+    accentColor: '#e64a19',
+    secondaryColor: '#f9a825',
+    surfaceColor: '#1c1310',
+    sourceInspiration: 'Android Theme',
+  },
+  {
+    id: 'rose',
+    name: 'Rose',
+    description: 'Elegant ruby magenta and vivid violet flourishes',
+    accentColor: '#d81b60',
+    secondaryColor: '#8e24aa',
+    surfaceColor: '#1c1018',
+    sourceInspiration: 'Android Theme',
+  },
+  {
+    id: 'midnight',
+    name: 'Midnight',
+    description: 'Muted slate steel with serene twilight blue tones',
+    accentColor: '#3949ab',
+    secondaryColor: '#607d8b',
+    surfaceColor: '#111420',
+    sourceInspiration: 'Android Theme',
+  },
   {
     id: 'default',
     name: 'Material Expressive',
@@ -66,15 +156,6 @@ export const AVAILABLE_PALETTES: PaletteMetadata[] = [
     sourceInspiration: 'Catppuccin Mocha',
   },
   {
-    id: 'sunset',
-    name: 'Sunset Amber',
-    description: 'Warm glowing amber and coral pink on rich obsidian mahogany',
-    accentColor: '#f59e0b',
-    secondaryColor: '#78350f',
-    surfaceColor: '#1c1316',
-    sourceInspiration: 'Sunset Glow',
-  },
-  {
     id: 'ocean',
     name: 'Deep Abyss',
     description: 'Midnight navy depths with radiant sapphire ocean accents',
@@ -89,8 +170,15 @@ export interface AppSettings {
   // Appearance & Themes
   themeMode: ThemeMode;
   accentPalette: AccentPalette;
+  dynamicColor: boolean;
+  isAmoledTheme: boolean;
   highContrast: boolean;
   compactUi: boolean;
+
+  // Thumbnails
+  showThumbnails: boolean;
+  thumbnailMode: ThumbnailMode;
+  thumbnailFramePosition: number;
 
   // Playback & Controls
   autoPlayNext: boolean;
@@ -122,8 +210,14 @@ export interface AppSettings {
 export const DEFAULT_SETTINGS: AppSettings = {
   themeMode: 'system',
   accentPalette: 'default',
+  dynamicColor: false,
+  isAmoledTheme: false,
   highContrast: false,
   compactUi: false,
+
+  showThumbnails: true,
+  thumbnailMode: 'smart',
+  thumbnailFramePosition: 33,
 
   autoPlayNext: true,
   resumePlaybackPrompt: true,
@@ -152,8 +246,14 @@ export function parseSettingsFromRaw(raw: Record<string, string>): AppSettings {
   return {
     themeMode: (raw.themeMode as ThemeMode) || DEFAULT_SETTINGS.themeMode,
     accentPalette: (raw.accentPalette as AccentPalette) || DEFAULT_SETTINGS.accentPalette,
+    dynamicColor: raw.dynamicColor !== undefined ? raw.dynamicColor === 'true' : DEFAULT_SETTINGS.dynamicColor,
+    isAmoledTheme: raw.isAmoledTheme !== undefined ? raw.isAmoledTheme === 'true' : DEFAULT_SETTINGS.isAmoledTheme,
     highContrast: raw.highContrast !== undefined ? raw.highContrast === 'true' : DEFAULT_SETTINGS.highContrast,
     compactUi: raw.compactUi !== undefined ? raw.compactUi === 'true' : DEFAULT_SETTINGS.compactUi,
+
+    showThumbnails: raw.showThumbnails !== undefined ? raw.showThumbnails === 'true' : DEFAULT_SETTINGS.showThumbnails,
+    thumbnailMode: (raw.thumbnailMode as ThumbnailMode) || DEFAULT_SETTINGS.thumbnailMode,
+    thumbnailFramePosition: raw.thumbnailFramePosition ? Number(raw.thumbnailFramePosition) : DEFAULT_SETTINGS.thumbnailFramePosition,
 
     autoPlayNext: raw.autoPlayNext !== undefined ? raw.autoPlayNext === 'true' : DEFAULT_SETTINGS.autoPlayNext,
     resumePlaybackPrompt:
@@ -206,16 +306,36 @@ export function applyThemeToDom(
   themeMode: ThemeMode,
   accentPalette: AccentPalette,
   highContrast: boolean,
-  compactUi: boolean
+  compactUi: boolean,
+  dynamicColor = false,
+  systemAccentColor: string | null = null,
+  isAmoledTheme = false
 ): void {
   if (typeof document === 'undefined') return;
   const root = document.documentElement;
   const effectiveTheme = resolveEffectiveTheme(themeMode);
 
   root.setAttribute('data-theme', effectiveTheme);
-  root.setAttribute('data-palette', accentPalette);
   root.classList.toggle('dark', effectiveTheme === 'dark');
   root.style.colorScheme = effectiveTheme;
+
+  if (dynamicColor && systemAccentColor) {
+    root.setAttribute('data-palette', 'dynamic');
+    root.style.setProperty('--md-sys-color-primary', systemAccentColor);
+    root.style.setProperty('--md-sys-color-primary-container', systemAccentColor);
+    root.style.setProperty('--md-sys-color-on-primary-container', '#ffffff');
+  } else {
+    root.style.removeProperty('--md-sys-color-primary');
+    root.style.removeProperty('--md-sys-color-primary-container');
+    root.style.removeProperty('--md-sys-color-on-primary-container');
+    root.setAttribute('data-palette', accentPalette);
+  }
+
+  if (isAmoledTheme && effectiveTheme === 'dark') {
+    root.setAttribute('data-amoled', 'true');
+  } else {
+    root.removeAttribute('data-amoled');
+  }
 
   if (highContrast) {
     root.setAttribute('data-contrast', 'high');

@@ -24,12 +24,15 @@ export interface ExtractedMetadata {
 export function computeMediaThumbnailKey(
   filePath: string,
   fileSize: number | null,
-  lastModified: number | null
+  lastModified: number | null,
+  strategy = 'smart',
+  position = 33
 ): string {
   const norm = path.resolve(filePath).toLowerCase();
+  const stratKey = strategy === 'frame_position' ? `frame_pos_${Math.round(position)}` : strategy;
   return crypto
     .createHash('sha256')
-    .update(`${norm}:${fileSize ?? 0}:${lastModified ?? 0}`)
+    .update(`${norm}:${fileSize ?? 0}:${lastModified ?? 0}:${stratKey}`)
     .digest('hex');
 }
 
@@ -74,6 +77,16 @@ export class MetadataService {
     return null;
   }
 
+  public getThumbnailStrategy(): { mode: 'smart' | 'first_frame' | 'frame_position' | 'embedded'; position: number } {
+    const rawMode = this.mediaDb.getSetting('thumbnailMode') as 'smart' | 'first_frame' | 'frame_position' | 'embedded' | null;
+    const mode = (rawMode && ['smart', 'first_frame', 'frame_position', 'embedded'].includes(rawMode))
+      ? rawMode
+      : 'smart';
+    const rawPos = this.mediaDb.getSetting('thumbnailFramePosition');
+    const position = rawPos !== null ? Math.max(0, Math.min(100, Number(rawPos))) : 33;
+    return { mode, position: isNaN(position) ? 33 : position };
+  }
+
   public async extractForMedia(media: MediaRecord): Promise<ExtractedMetadata | null> {
     const resolvedPath = path.resolve(media.filePath);
     if (!fs.existsSync(resolvedPath)) {
@@ -90,7 +103,8 @@ export class MetadataService {
       // Keep existing if stat fails
     }
 
-    const expectedKey = computeMediaThumbnailKey(resolvedPath, currentSize, currentMtime);
+    const { mode, position } = this.getThumbnailStrategy();
+    const expectedKey = computeMediaThumbnailKey(resolvedPath, currentSize, currentMtime, mode, position);
     const existingThumbPath = path.join(this.thumbnailDir, `${expectedKey}.jpg`);
     const hasThumb = fs.existsSync(existingThumbPath);
 
@@ -117,7 +131,7 @@ export class MetadataService {
       };
     }
 
-    return this.queueExtraction(resolvedPath, media.id, currentSize, currentMtime, expectedKey);
+    return this.queueExtraction(resolvedPath, media.id, currentSize, currentMtime, expectedKey, mode, position);
   }
 
   public async extractForFile(filePath: string): Promise<ExtractedMetadata | null> {
@@ -136,10 +150,11 @@ export class MetadataService {
       // Inaccessible stats
     }
 
-    const key = computeMediaThumbnailKey(resolvedPath, fileSize, lastModified);
+    const { mode, position } = this.getThumbnailStrategy();
+    const key = computeMediaThumbnailKey(resolvedPath, fileSize, lastModified, mode, position);
     const existingMedia = this.mediaDb.getMediaByPath(resolvedPath);
 
-    return this.queueExtraction(resolvedPath, existingMedia?.id, fileSize, lastModified, key);
+    return this.queueExtraction(resolvedPath, existingMedia?.id, fileSize, lastModified, key, mode, position);
   }
 
   private queueExtraction(
@@ -147,17 +162,20 @@ export class MetadataService {
     mediaId: string | undefined,
     fileSize: number | null,
     lastModified: number | null,
-    cacheKey: string
+    cacheKey: string,
+    mode: 'smart' | 'first_frame' | 'frame_position' | 'embedded' = 'smart',
+    position = 33
   ): Promise<ExtractedMetadata | null> {
-    // Deduplicate in-flight requests for the same file
-    if (this.pendingPromises.has(filePath)) {
-      return this.pendingPromises.get(filePath)!;
+    const queueKey = `${filePath}:${cacheKey}`;
+    // Deduplicate in-flight requests for the exact same file & cache key
+    if (this.pendingPromises.has(queueKey)) {
+      return this.pendingPromises.get(queueKey)!;
     }
 
     const extractionPromise = new Promise<ExtractedMetadata | null>((resolve) => {
       this.enqueueTask(async () => {
         try {
-          const result = await this.performExtraction(filePath, fileSize, lastModified, cacheKey);
+          const result = await this.performExtraction(filePath, fileSize, lastModified, cacheKey, mode, position);
           if (result && mediaId) {
             this.mediaDb.updateMediaMetadata(mediaId, {
               duration: result.duration,
@@ -174,12 +192,12 @@ export class MetadataService {
           console.error('[MetadataService] Extraction failed for:', filePath, err);
           resolve(null);
         } finally {
-          this.pendingPromises.delete(filePath);
+          this.pendingPromises.delete(queueKey);
         }
       });
     });
 
-    this.pendingPromises.set(filePath, extractionPromise);
+    this.pendingPromises.set(queueKey, extractionPromise);
     return extractionPromise;
   }
 
@@ -210,7 +228,9 @@ export class MetadataService {
     filePath: string,
     fileSize: number | null,
     lastModified: number | null,
-    cacheKey: string
+    cacheKey: string,
+    mode: 'smart' | 'first_frame' | 'frame_position' | 'embedded' = 'smart',
+    position = 33
   ): Promise<ExtractedMetadata | null> {
     const finalThumbPath = path.join(this.thumbnailDir, `${cacheKey}.jpg`);
 
@@ -240,7 +260,6 @@ export class MetadataService {
       funcs.mpv_set_property_string(ctx, 'pause', 'yes');
       funcs.mpv_set_property_string(ctx, 'audio', 'no');
       funcs.mpv_set_property_string(ctx, 'sub', 'no');
-      funcs.mpv_set_property_string(ctx, 'start', '1');
 
       const initCode = funcs.mpv_initialize(ctx);
       if (initCode < 0) {
@@ -259,7 +278,37 @@ export class MetadataService {
         if (dur) break;
       }
 
-      // Step one frame to force vo=image output
+      // Execute strategic frame seeking & albumart detection
+      if (mode === 'smart' || mode === 'embedded') {
+        let foundAlbumArt = false;
+        const countStr = safeGetMpvPropertyString(funcs, ctx, 'track-list/count');
+        const count = countStr ? parseInt(countStr, 10) : 0;
+        for (let i = 0; i < count; i++) {
+          const isAlbumArt = safeGetMpvPropertyString(funcs, ctx, `track-list/${i}/albumart`);
+          const trackType = safeGetMpvPropertyString(funcs, ctx, `track-list/${i}/type`);
+          const trackId = safeGetMpvPropertyString(funcs, ctx, `track-list/${i}/id`);
+          if (trackType === 'video' && isAlbumArt === 'yes' && trackId) {
+            funcs.mpv_set_property_string(ctx, 'vid', trackId);
+            foundAlbumArt = true;
+            break;
+          }
+        }
+
+        if (!foundAlbumArt) {
+          if (mode === 'smart') {
+            funcs.mpv_command(ctx, ['seek', '33', 'absolute-percent', null]);
+          } else {
+            funcs.mpv_command(ctx, ['seek', '0', 'absolute-percent', null]);
+          }
+        }
+      } else if (mode === 'first_frame') {
+        funcs.mpv_command(ctx, ['seek', '0', 'absolute-percent', null]);
+      } else if (mode === 'frame_position') {
+        const pct = Math.max(0, Math.min(100, Math.round(position)));
+        funcs.mpv_command(ctx, ['seek', String(pct), 'absolute-percent', null]);
+      }
+
+      // Step one frame to force vo=image output at the desired frame
       funcs.mpv_command(ctx, ['frame-step', null]);
       for (let i = 0; i < 15; i++) {
         funcs.mpv_wait_event(ctx, 0.05);
@@ -285,10 +334,10 @@ export class MetadataService {
       // Check generated thumbnail frame in temp directory
       let hasThumbnail = false;
       try {
-        const files = fs.readdirSync(tempDir);
-        const firstJpg = files.find((f) => f.toLowerCase().endsWith('.jpg'));
-        if (firstJpg) {
-          const srcThumb = path.join(tempDir, firstJpg);
+        const files = fs.readdirSync(tempDir).filter((f) => f.toLowerCase().endsWith('.jpg')).sort();
+        if (files.length > 0) {
+          const targetJpg = files[files.length - 1];
+          const srcThumb = path.join(tempDir, targetJpg);
           fs.copyFileSync(srcThumb, finalThumbPath);
           hasThumbnail = true;
         }
@@ -326,6 +375,24 @@ export class MetadataService {
     }
   }
 
+  public clearAllThumbnails(): void {
+    if (!fs.existsSync(this.thumbnailDir)) return;
+    try {
+      const files = fs.readdirSync(this.thumbnailDir);
+      for (const file of files) {
+        if (file.toLowerCase().endsWith('.jpg')) {
+          try {
+            fs.unlinkSync(path.join(this.thumbnailDir, file));
+          } catch {
+            // Ignore single file unlink error
+          }
+        }
+      }
+    } catch (err) {
+      console.error('[MetadataService] Error during thumbnail wipe:', err);
+    }
+  }
+
   public cleanupOrphanedThumbnails(activeKeys: Set<string>): void {
     if (!fs.existsSync(this.thumbnailDir)) return;
     try {
@@ -345,4 +412,5 @@ export class MetadataService {
       console.error('[MetadataService] Error during thumbnail cleanup:', err);
     }
   }
+
 }

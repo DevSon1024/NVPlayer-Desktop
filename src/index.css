@@ -294,6 +294,133 @@ body {
   --md-sys-color-on-primary-container: #0369a1;
 }
 
+/* Android Palette 1: Cinematic */
+[data-palette="cinematic"] {
+  --md-sys-color-primary: #80eeff;
+  --md-sys-color-on-primary: #00363d;
+  --md-sys-color-primary-container: #004f58;
+  --md-sys-color-on-primary-container: #b2ebf2;
+  --md-sys-color-secondary: #ffe082;
+  --md-sys-color-secondary-container: #ffb300;
+  --md-sys-color-on-secondary-container: #1a1200;
+  --md-sys-color-tertiary: #b388ff;
+  --md-sys-color-tertiary-container: #4a148c;
+  --md-sys-color-on-tertiary-container: #ede0ff;
+  --md-sys-color-outline: #2d424b;
+  --md-sys-color-outline-variant: #1a2930;
+}
+[data-theme="light"][data-palette="cinematic"] {
+  --md-sys-color-primary: #00bcd4;
+  --md-sys-color-on-primary: #ffffff;
+  --md-sys-color-primary-container: #b2ebf2;
+  --md-sys-color-on-primary-container: #006978;
+  --md-sys-color-secondary: #ffb300;
+  --md-sys-color-secondary-container: #ffecb3;
+  --md-sys-color-on-secondary-container: #201b00;
+}
+
+/* Android Palette 2: Nosved Blue */
+[data-palette="blue"] {
+  --md-sys-color-primary: #aec6ff;
+  --md-sys-color-on-primary: #002e6a;
+  --md-sys-color-primary-container: #1a4f9b;
+  --md-sys-color-on-primary-container: #d8e2ff;
+  --md-sys-color-secondary: #c5cae9;
+  --md-sys-color-secondary-container: #3949ab;
+  --md-sys-color-on-secondary-container: #e8eaf6;
+  --md-sys-color-tertiary: #a4c9fe;
+  --md-sys-color-outline: #384257;
+  --md-sys-color-outline-variant: #1f2738;
+}
+[data-theme="light"][data-palette="blue"] {
+  --md-sys-color-primary: #1a73e8;
+  --md-sys-color-on-primary: #ffffff;
+  --md-sys-color-primary-container: #d8e2ff;
+  --md-sys-color-on-primary-container: #001a43;
+  --md-sys-color-secondary: #3949ab;
+  --md-sys-color-secondary-container: #e8eaf6;
+  --md-sys-color-on-secondary-container: #1a237e;
+}
+
+/* Android Palette 3: Emerald */
+[data-palette="emerald"] {
+  --md-sys-color-primary: #80cbc4;
+  --md-sys-color-on-primary: #003731;
+  --md-sys-color-primary-container: #004d44;
+  --md-sys-color-on-primary-container: #b2dfdb;
+  --md-sys-color-secondary: #a5d6a7;
+  --md-sys-color-secondary-container: #2e7d32;
+  --md-sys-color-on-secondary-container: #e8f5e9;
+  --md-sys-color-outline: #2b453e;
+  --md-sys-color-outline-variant: #162b26;
+}
+[data-theme="light"][data-palette="emerald"] {
+  --md-sys-color-primary: #00897b;
+  --md-sys-color-on-primary: #ffffff;
+  --md-sys-color-primary-container: #b2dfdb;
+  --md-sys-color-on-primary-container: #004d40;
+  --md-sys-color-secondary: #43a047;
+  --md-sys-color-secondary-container: #e8f5e9;
+  --md-sys-color-on-secondary-container: #1b5e20;
+}
+
+/* Android Palette 4: Rose */
+[data-palette="rose"] {
+  --md-sys-color-primary: #f48fb1;
+  --md-sys-color-on-primary: #560027;
+  --md-sys-color-primary-container: #880e4f;
+  --md-sys-color-on-primary-container: #fce4ec;
+  --md-sys-color-secondary: #ce93d8;
+  --md-sys-color-secondary-container: #6a1b9a;
+  --md-sys-color-on-secondary-container: #f3e5f5;
+  --md-sys-color-outline: #4d2b3a;
+  --md-sys-color-outline-variant: #2d1420;
+}
+[data-theme="light"][data-palette="rose"] {
+  --md-sys-color-primary: #d81b60;
+  --md-sys-color-on-primary: #ffffff;
+  --md-sys-color-primary-container: #fce4ec;
+  --md-sys-color-on-primary-container: #880e4f;
+  --md-sys-color-secondary: #8e24aa;
+  --md-sys-color-secondary-container: #f3e5f5;
+  --md-sys-color-on-secondary-container: #4a148c;
+}
+
+/* Android Palette 5: Midnight */
+[data-palette="midnight"] {
+  --md-sys-color-primary: #b0bec5;
+  --md-sys-color-on-primary: #1c313a;
+  --md-sys-color-primary-container: #37474f;
+  --md-sys-color-on-primary-container: #eceff1;
+  --md-sys-color-secondary: #9fa8da;
+  --md-sys-color-secondary-container: #283593;
+  --md-sys-color-on-secondary-container: #e8eaf6;
+  --md-sys-color-outline: #37474f;
+  --md-sys-color-outline-variant: #212930;
+}
+[data-theme="light"][data-palette="midnight"] {
+  --md-sys-color-primary: #37474f;
+  --md-sys-color-on-primary: #ffffff;
+  --md-sys-color-primary-container: #cfd8dc;
+  --md-sys-color-on-primary-container: #263238;
+  --md-sys-color-secondary: #3949ab;
+  --md-sys-color-secondary-container: #e8eaf6;
+  --md-sys-color-on-secondary-container: #1a237e;
+}
+
+/* AMOLED Pure Black Overrides */
+[data-theme="dark"][data-amoled="true"],
+html.dark[data-amoled="true"] {
+  --md-sys-color-background: #000000 !important;
+  --md-sys-color-surface: #000000 !important;
+  --md-sys-color-surface-dim: #000000 !important;
+  --md-sys-color-surface-container-lowest: #000000 !important;
+  --md-sys-color-surface-container-low: #050505 !important;
+  --md-sys-color-surface-container: #0a0a0a !important;
+  --md-sys-color-surface-container-high: #121212 !important;
+  --md-sys-color-surface-container-highest: #1a1a1a !important;
+}
+
 /* Accessibility Modifiers */
 html[data-contrast="high"],
 html.high-contrast {

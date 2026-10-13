@@ -180,9 +180,11 @@ export interface NosvedAPI {
   getPathForFile: (file: File) => string;
   extractMetadata: (mediaId: string) => Promise<MediaItem | null>;
   cleanupThumbnails: () => Promise<void>;
+  clearThumbnailCache: () => Promise<boolean>;
 
   // Settings & Themes
   getSettings: () => Promise<Record<string, string>>;
+  getSystemAccentColor: () => Promise<string | null>;
   setSetting: (key: string, value: string) => Promise<boolean>;
   setAllSettings: (settings: Record<string, string>) => Promise<boolean>;
   resetSettings: () => Promise<boolean>;

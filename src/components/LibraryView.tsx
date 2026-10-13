@@ -11,6 +11,7 @@ import { formatTime, formatBytes, formatDate } from '../utils/formatters';
 
 interface LibraryViewProps {
   libraryItems: MediaItem[];
+  showThumbnails?: boolean;
   onImportFiles: () => void;
   onOpenMedia: (filePath: string) => void;
   onRemoveMedia: (id: string, e: React.MouseEvent) => void;
@@ -19,6 +20,7 @@ interface LibraryViewProps {
 
 export const LibraryView: React.FC<LibraryViewProps> = ({
   libraryItems,
+  showThumbnails = true,
   onImportFiles,
   onOpenMedia,
   onRemoveMedia,
@@ -72,7 +74,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
               onClick={() => !item.isMissing && onOpenMedia(item.filePath)}
             >
               <div className="aspect-video w-full relative bg-surface-dim overflow-hidden flex items-center justify-center">
-                {item.thumbnailKey ? (
+                {showThumbnails && item.thumbnailKey ? (
                   <img
                     src={`nosved-thumb://${item.thumbnailKey}`}
                     alt={item.fileName}

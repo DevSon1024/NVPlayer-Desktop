@@ -17,6 +17,7 @@ interface FloatingIslandProps {
   playbackStatus: PlaybackStatus;
   activePlaylist: ActivePlaylistState | null;
   thumbnailKey?: string | null;
+  showThumbnails?: boolean;
   onNavigateToPlayer: () => void;
   onTogglePlayPause: () => void;
   onToggleMute: () => void;
@@ -28,6 +29,7 @@ export const FloatingIsland: React.FC<FloatingIslandProps> = ({
   playbackStatus,
   activePlaylist,
   thumbnailKey,
+  showThumbnails = true,
   onNavigateToPlayer,
   onTogglePlayPause,
   onToggleMute,
@@ -64,7 +66,7 @@ export const FloatingIsland: React.FC<FloatingIslandProps> = ({
       <div className="flex items-center gap-3.5 px-4 py-2.5">
         {/* Miniature Screen Thumbnail Preview */}
         <div className="w-14 h-9 rounded-lg bg-surface-dim border border-border overflow-hidden relative shrink-0 flex items-center justify-center">
-          {thumbnailKey ? (
+          {showThumbnails && thumbnailKey ? (
             <img
               src={`nosved-thumb://${thumbnailKey}/`}
               alt={fileName}

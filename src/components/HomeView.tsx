@@ -20,6 +20,7 @@ interface HomeViewProps {
   recentItems: MediaItem[];
   libraryItems: MediaItem[];
   playlists: Playlist[];
+  showThumbnails?: boolean;
   onOpenMedia: (filePath: string) => void;
   onOpenFile: () => void;
   onNavigateTab: (tab: TabType) => void;
@@ -29,6 +30,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
   recentItems,
   libraryItems,
   playlists,
+  showThumbnails = true,
   onOpenMedia,
   onOpenFile,
   onNavigateTab,
@@ -131,7 +133,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
               onClick={() => onOpenMedia(lastPlayed.filePath)}
               title={`Play ${lastPlayed.fileName}`}
             >
-              {lastPlayed.thumbnailKey ? (
+              {showThumbnails && lastPlayed.thumbnailKey ? (
                 <img
                   src={`nosved-thumb://${lastPlayed.thumbnailKey}/`}
                   alt={lastPlayed.fileName}
@@ -304,7 +306,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
                   title={item.filePath}
                 >
                   <div className="aspect-video w-full relative bg-surface-dim overflow-hidden flex items-center justify-center">
-                    {item.thumbnailKey ? (
+                    {showThumbnails && item.thumbnailKey ? (
                       <img
                         src={`nosved-thumb://${item.thumbnailKey}/`}
                         alt={item.fileName}
@@ -387,7 +389,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
                 title={item.filePath}
               >
                 <div className="aspect-video w-full relative bg-surface-dim overflow-hidden flex items-center justify-center">
-                  {item.thumbnailKey ? (
+                  {showThumbnails && item.thumbnailKey ? (
                     <img
                       src={`nosved-thumb://${item.thumbnailKey}/`}
                       alt={item.fileName}

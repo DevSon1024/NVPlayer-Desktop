@@ -186,9 +186,11 @@ export interface NosvedAPI {
   getPathForFile: (file: File) => string;
   extractMetadata: (mediaId: string) => Promise<MediaItemPayload | null>;
   cleanupThumbnails: () => Promise<void>;
+  clearThumbnailCache: () => Promise<boolean>;
 
   // Settings & Themes
   getSettings: () => Promise<Record<string, string>>;
+  getSystemAccentColor: () => Promise<string | null>;
   setSetting: (key: string, value: string) => Promise<boolean>;
   setAllSettings: (settings: Record<string, string>) => Promise<boolean>;
   resetSettings: () => Promise<boolean>;
@@ -304,9 +306,11 @@ const api: NosvedAPI = {
   },
   extractMetadata: (mediaId: string) => ipcRenderer.invoke('metadata:extract-media', mediaId),
   cleanupThumbnails: () => ipcRenderer.invoke('metadata:cleanup-cache'),
+  clearThumbnailCache: () => ipcRenderer.invoke('metadata:clear-cache'),
 
   // Settings & Themes
   getSettings: () => ipcRenderer.invoke('settings:get-all'),
+  getSystemAccentColor: () => ipcRenderer.invoke('settings:get-system-accent-color'),
   setSetting: (key: string, value: string) => ipcRenderer.invoke('settings:set', key, value),
   setAllSettings: (settings: Record<string, string>) => ipcRenderer.invoke('settings:set-all', settings),
   resetSettings: () => ipcRenderer.invoke('settings:reset'),

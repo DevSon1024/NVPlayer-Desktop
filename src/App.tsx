@@ -39,9 +39,11 @@ export const App: React.FC = () => {
     appInfo,
     nativePoc,
     settings,
+    systemAccentColor,
     isIsolated,
     handleUpdateSetting,
     handleResetSettings,
+    handleClearThumbnailCache,
     handleExportSettings,
     handleImportSettings,
   } = useAppSettings();
@@ -339,6 +341,7 @@ export const App: React.FC = () => {
               recentItems={recentItems}
               libraryItems={libraryItems}
               playlists={playlists}
+              showThumbnails={settings.showThumbnails}
               onOpenMedia={openMediaWithResumeCheck}
               onOpenFile={handleOpenFile}
               onNavigateTab={handleNavigateTab}
@@ -391,6 +394,7 @@ export const App: React.FC = () => {
           {activeTab === 'library' && !isPlayerFullscreen && (
             <LibraryView
               libraryItems={libraryItems}
+              showThumbnails={settings.showThumbnails}
               onImportFiles={handleImportFiles}
               onOpenMedia={openMediaWithResumeCheck}
               onRemoveMedia={handleRemoveMedia}
@@ -410,6 +414,7 @@ export const App: React.FC = () => {
               selectedPlaylistId={selectedPlaylistId}
               selectedPlaylistDetails={selectedPlaylistDetails}
               activePlaylist={activePlaylist}
+              showThumbnails={settings.showThumbnails}
               onSelectPlaylist={setSelectedPlaylistId}
               onOpenNewPlaylistModal={() => {
                 setNewPlaylistName('');
@@ -453,6 +458,8 @@ export const App: React.FC = () => {
               nativePoc={nativePoc}
               playerStatus={playerStatus}
               isFullscreen={isAppFullscreen || isPlayerFullscreen}
+              systemAccentColor={systemAccentColor}
+              onClearThumbnailCache={handleClearThumbnailCache}
             />
           )}
 
@@ -513,6 +520,7 @@ export const App: React.FC = () => {
               playbackStatus={playbackStatus}
               activePlaylist={activePlaylist}
               thumbnailKey={currentThumbnailKey}
+              showThumbnails={settings.showThumbnails}
               onNavigateToPlayer={() => {
                 setPreviousTab(activeTab);
                 setActiveTab('player');

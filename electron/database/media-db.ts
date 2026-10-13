@@ -610,6 +610,11 @@ export class MediaDatabase {
     return stepRc === SQLITE_DONE;
   }
 
+  public clearAllThumbnailKeys(): boolean {
+    if (!this.db || !this.funcs) return false;
+    return this.exec('UPDATE media SET thumbnail_key = NULL;');
+  }
+
   public updatePlaybackPosition(filePath: string, position: number, duration?: number | null): boolean {
     if (!this.db || !this.funcs) return false;
     const normalizedPath = path.resolve(filePath);

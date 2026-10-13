@@ -30,6 +30,7 @@ export function useAppSettings() {
     apiVersion?: { formatted: string };
   } | null>(null);
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
+  const [systemAccentColor, setSystemAccentColor] = useState<string | null>(null);
 
   useEffect(() => {
     if (!window.nosvedAPI) return;
@@ -37,21 +38,38 @@ export function useAppSettings() {
     window.nosvedAPI.getAppInfo().then(setAppInfo).catch(console.error);
     window.nosvedAPI.getSecurityState().then(setSecurityState).catch(console.error);
 
-    if (window.nosvedAPI.getSettings) {
-      window.nosvedAPI
-        .getSettings()
-        .then((raw) => {
+    const loadSettingsAndAccent = async () => {
+      let accent: string | null = null;
+      if (window.nosvedAPI?.getSystemAccentColor) {
+        try {
+          accent = await window.nosvedAPI.getSystemAccentColor();
+          setSystemAccentColor(accent);
+        } catch (err) {
+          console.warn('[useAppSettings] Failed to fetch system accent color:', err);
+        }
+      }
+
+      if (window.nosvedAPI?.getSettings) {
+        try {
+          const raw = await window.nosvedAPI.getSettings();
           const parsed = parseSettingsFromRaw(raw);
           setSettings(parsed);
           applyThemeToDom(
             parsed.themeMode,
             parsed.accentPalette,
             parsed.highContrast,
-            parsed.compactUi
+            parsed.compactUi,
+            parsed.dynamicColor,
+            accent,
+            parsed.isAmoledTheme
           );
-        })
-        .catch(console.error);
-    }
+        } catch (err) {
+          console.error('[useAppSettings] Failed to fetch settings:', err);
+        }
+      }
+    };
+
+    loadSettingsAndAccent();
   }, []);
 
   // Dynamic OS color-scheme listener for System mode
@@ -65,7 +83,10 @@ export function useAppSettings() {
         'system',
         settings.accentPalette,
         settings.highContrast,
-        settings.compactUi
+        settings.compactUi,
+        settings.dynamicColor,
+        systemAccentColor,
+        settings.isAmoledTheme
       );
     };
 
@@ -76,7 +97,15 @@ export function useAppSettings() {
       mediaQuery.addListener(handleSystemThemeChange);
       return () => mediaQuery.removeListener(handleSystemThemeChange);
     }
-  }, [settings.themeMode, settings.accentPalette, settings.highContrast, settings.compactUi]);
+  }, [
+    settings.themeMode,
+    settings.accentPalette,
+    settings.highContrast,
+    settings.compactUi,
+    settings.dynamicColor,
+    settings.isAmoledTheme,
+    systemAccentColor,
+  ]);
 
   const handleUpdateSetting = useCallback(
     async <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
@@ -86,7 +115,10 @@ export function useAppSettings() {
           next.themeMode,
           next.accentPalette,
           next.highContrast,
-          next.compactUi
+          next.compactUi,
+          next.dynamicColor,
+          systemAccentColor,
+          next.isAmoledTheme
         );
         return next;
       });
@@ -94,7 +126,7 @@ export function useAppSettings() {
         await window.nosvedAPI.setSetting(String(key), String(value)).catch(console.error);
       }
     },
-    []
+    [systemAccentColor]
   );
 
   const handleResetSettings = useCallback(async () => {
@@ -103,11 +135,21 @@ export function useAppSettings() {
       DEFAULT_SETTINGS.themeMode,
       DEFAULT_SETTINGS.accentPalette,
       DEFAULT_SETTINGS.highContrast,
-      DEFAULT_SETTINGS.compactUi
+      DEFAULT_SETTINGS.compactUi,
+      DEFAULT_SETTINGS.dynamicColor,
+      systemAccentColor,
+      DEFAULT_SETTINGS.isAmoledTheme
     );
     if (window.nosvedAPI?.resetSettings) {
       await window.nosvedAPI.resetSettings().catch(console.error);
     }
+  }, [systemAccentColor]);
+
+  const handleClearThumbnailCache = useCallback(async () => {
+    if (window.nosvedAPI?.clearThumbnailCache) {
+      return await window.nosvedAPI.clearThumbnailCache();
+    }
+    return false;
   }, []);
 
   const handleExportSettings = useCallback(async () => {
@@ -139,12 +181,15 @@ export function useAppSettings() {
       newSettings.themeMode,
       newSettings.accentPalette,
       newSettings.highContrast,
-      newSettings.compactUi
+      newSettings.compactUi,
+      newSettings.dynamicColor,
+      systemAccentColor,
+      newSettings.isAmoledTheme
     );
     if (window.nosvedAPI.setAllSettings) {
       await window.nosvedAPI.setAllSettings(serializeSettingsToRaw(newSettings));
     }
-  }, []);
+  }, [systemAccentColor]);
 
   const isIsolated =
     securityState?.contextIsolated === true &&
@@ -160,9 +205,11 @@ export function useAppSettings() {
     setNativePoc,
     settings,
     setSettings,
+    systemAccentColor,
     isIsolated,
     handleUpdateSetting,
     handleResetSettings,
+    handleClearThumbnailCache,
     handleExportSettings,
     handleImportSettings,
   };
