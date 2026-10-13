@@ -60,32 +60,6 @@ The Electron desktop window will launch automatically with live reloading for th
 
 ---
 
-## Quality & Test Verification
-
-Nosved Player includes a comprehensive suite of unit tests, native C-ABI smoke tests, and packaged runtime verification:
-
-```bash
-# 1. Type check TypeScript source code (0 errors enforced)
-npm run typecheck
-
-# 2. Compile production bundles
-npm run build
-
-# 3. Run complete test suite (shell integration, lifecycle, rendering, security)
-npm test
-
-# 4. Run Phase 9 database, playlist, and thumbnail unit tests
-node scripts/test-phase9-unit.mjs
-
-# 5. Run real native video playback smoke test
-node scripts/smoke-test-playback.mjs
-
-# 6. Run real Direct3D child HWND video rendering smoke test
-node scripts/smoke-test-rendering.mjs
-```
-
----
-
 ## Production Packaging & Distribution
 
 Nosved Player Desktop is packaged with `electron-builder` targeting Windows x64. The native `libmpv-2.dll` binary is automatically bundled via `extraResources` into the application runtime.
