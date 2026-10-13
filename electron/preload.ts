@@ -185,7 +185,7 @@ export interface NosvedAPI {
   pickFilesForPlaylist: (playlistId: string) => Promise<{ canceled: boolean; addedCount: number }>;
   addFilesToPlaylist: (playlistId: string, filePaths: string[]) => Promise<{ success: boolean; addedCount: number }>;
   getPathForFile: (file: File) => string;
-  extractMetadata: (mediaId: string, force?: boolean) => Promise<MediaItemPayload | null>;
+  extractMetadata: (mediaId: string, force?: boolean, priority?: number) => Promise<MediaItemPayload | null>;
   refreshAllThumbnails: (force?: boolean) => Promise<boolean>;
   cleanupThumbnails: () => Promise<void>;
   clearThumbnailCache: () => Promise<boolean>;
@@ -310,7 +310,8 @@ const api: NosvedAPI = {
     }
     return (file as unknown as { path?: string }).path || '';
   },
-  extractMetadata: (mediaId: string, force?: boolean) => ipcRenderer.invoke('metadata:extract-media', mediaId, force),
+  extractMetadata: (mediaId: string, force?: boolean, priority?: number) =>
+    ipcRenderer.invoke('metadata:extract-media', mediaId, force, priority),
   refreshAllThumbnails: (force?: boolean) => ipcRenderer.invoke('metadata:refresh-all', force),
   cleanupThumbnails: () => ipcRenderer.invoke('metadata:cleanup-cache'),
   clearThumbnailCache: () => ipcRenderer.invoke('metadata:clear-cache'),

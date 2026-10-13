@@ -11,7 +11,7 @@ export interface MetadataHandlerContext {
 }
 
 export function registerMetadataHandlers(ctx: MetadataHandlerContext): void {
-  ipcMain.handle('metadata:extract-media', async (event, mediaId: unknown, force: unknown) => {
+  ipcMain.handle('metadata:extract-media', async (event, mediaId: unknown, force: unknown, priority?: unknown) => {
     if (!validateIpcSender(event, ctx.getMainWindow(), ctx.isDev)) {
       throw new Error('Unauthorized IPC invocation: Sender validation failed');
     }
@@ -24,7 +24,8 @@ export function registerMetadataHandlers(ctx: MetadataHandlerContext): void {
 
     const metadataService = ctx.getMetadataService();
     if (metadataService) {
-      await metadataService.extractForMedia(media, Boolean(force));
+      const prio = typeof priority === 'number' ? priority : 1;
+      await metadataService.extractForMedia(media, Boolean(force), prio);
       return mediaDb?.getMediaById(mediaId) ?? null;
     }
     return media;
@@ -42,7 +43,7 @@ export function registerMetadataHandlers(ctx: MetadataHandlerContext): void {
     const shouldForce = Boolean(force);
     for (const media of all) {
       if (!media.isMissing) {
-        void metadataService.extractForMedia(media, shouldForce);
+        void metadataService.extractForMedia(media, shouldForce, 2);
       }
     }
     return true;

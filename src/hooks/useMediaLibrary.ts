@@ -14,15 +14,17 @@ export function useMediaLibrary(activeTab: string) {
       }
       const items = await window.nosvedAPI.getLibrary();
       setLibraryItems(items);
-      for (const item of items) {
-        if ((force || !item.thumbnailKey) && !item.isMissing && window.nosvedAPI.extractMetadata) {
-          window.nosvedAPI.extractMetadata(item.id, force).then((updated) => {
-            if (updated && updated.thumbnailKey) {
-              setLibraryItems((prev) =>
-                prev.map((p) => (p.id === updated.id ? { ...p, ...updated } : p))
-              );
-            }
-          }).catch(() => {});
+
+      if (force) {
+        if (window.nosvedAPI.refreshAllThumbnails) {
+          window.nosvedAPI.refreshAllThumbnails(true).catch(() => {});
+        }
+      } else {
+        // Enqueue background extraction only for missing thumbnails without blocking
+        for (const item of items) {
+          if (!item.thumbnailKey && !item.isMissing && window.nosvedAPI.extractMetadata) {
+            window.nosvedAPI.extractMetadata(item.id, false, 2).catch(() => {});
+          }
         }
       }
     } catch (err) {
@@ -44,9 +46,6 @@ export function useMediaLibrary(activeTab: string) {
     setRefreshVersion((v) => v + 1);
     await refreshLibrary(true);
     await refreshRecent();
-    if (window.nosvedAPI?.refreshAllThumbnails) {
-      await window.nosvedAPI.refreshAllThumbnails(true);
-    }
   }, [refreshLibrary, refreshRecent]);
 
   const handleImportFiles = async () => {

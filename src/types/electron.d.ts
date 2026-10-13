@@ -179,7 +179,7 @@ export interface NosvedAPI {
   pickFilesForPlaylist: (playlistId: string) => Promise<{ canceled: boolean; addedCount: number }>;
   addFilesToPlaylist: (playlistId: string, filePaths: string[]) => Promise<{ success: boolean; addedCount: number }>;
   getPathForFile: (file: File) => string;
-  extractMetadata: (mediaId: string, force?: boolean) => Promise<MediaItem | null>;
+  extractMetadata: (mediaId: string, force?: boolean, priority?: number) => Promise<MediaItem | null>;
   refreshAllThumbnails: (force?: boolean) => Promise<boolean>;
   cleanupThumbnails: () => Promise<void>;
   clearThumbnailCache: () => Promise<boolean>;

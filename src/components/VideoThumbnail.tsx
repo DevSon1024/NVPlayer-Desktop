@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Film } from 'lucide-react';
 
 export interface VideoThumbnailProps {
@@ -23,9 +23,11 @@ export const VideoThumbnail: React.FC<VideoThumbnailProps> = ({
   refreshVersion,
 }) => {
   const [hasError, setHasError] = useState(false);
+  const attemptedRef = useRef(false);
 
   useEffect(() => {
     setHasError(false);
+    attemptedRef.current = false;
   }, [thumbnailKey, refreshVersion]);
 
   if (!showThumbnails || !thumbnailKey || hasError) {
@@ -46,8 +48,9 @@ export const VideoThumbnail: React.FC<VideoThumbnailProps> = ({
       className={imgClassName}
       onError={() => {
         setHasError(true);
-        if (mediaId && window.nosvedAPI?.extractMetadata) {
-          window.nosvedAPI.extractMetadata(mediaId).catch(() => {});
+        if (mediaId && !attemptedRef.current && window.nosvedAPI?.extractMetadata) {
+          attemptedRef.current = true;
+          window.nosvedAPI.extractMetadata(mediaId, false, 1).catch(() => {});
         }
       }}
     />

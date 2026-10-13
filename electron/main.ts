@@ -399,6 +399,7 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', async () => {
   try {
+    metadataService?.shutdown();
     stopFullscreenActivityTracker();
     videoWindow.destroy();
     mediaDb?.close();
