@@ -189,6 +189,8 @@ export interface NosvedAPI {
   refreshAllThumbnails: (force?: boolean) => Promise<boolean>;
   cleanupThumbnails: () => Promise<void>;
   clearThumbnailCache: () => Promise<boolean>;
+  getThumbnailStatus: () => Promise<{ isGenerating: boolean; pendingCount: number }>;
+  onThumbnailStatus: (callback: (status: { isGenerating: boolean; pendingCount: number }) => void) => () => void;
   onMediaMetadataUpdated: (callback: (media: MediaItemPayload) => void) => () => void;
   onF5Pressed: (callback: () => void) => () => void;
 
@@ -315,6 +317,16 @@ const api: NosvedAPI = {
   refreshAllThumbnails: (force?: boolean) => ipcRenderer.invoke('metadata:refresh-all', force),
   cleanupThumbnails: () => ipcRenderer.invoke('metadata:cleanup-cache'),
   clearThumbnailCache: () => ipcRenderer.invoke('metadata:clear-cache'),
+  getThumbnailStatus: () => ipcRenderer.invoke('metadata:get-status'),
+  onThumbnailStatus: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, status: unknown) => {
+      callback(status as { isGenerating: boolean; pendingCount: number });
+    };
+    ipcRenderer.on('metadata:status-updated', handler);
+    return () => {
+      ipcRenderer.removeListener('metadata:status-updated', handler);
+    };
+  },
   onMediaMetadataUpdated: (callback) => {
     const handler = (_event: Electron.IpcRendererEvent, media: unknown) => {
       callback(media as MediaItemPayload);
@@ -324,15 +336,7 @@ const api: NosvedAPI = {
       ipcRenderer.removeListener('media:metadata-updated', handler);
     };
   },
-  onF5Pressed: (callback) => {
-    const handler = () => {
-      callback();
-    };
-    ipcRenderer.on('app:f5-pressed', handler);
-    return () => {
-      ipcRenderer.removeListener('app:f5-pressed', handler);
-    };
-  },
+  onF5Pressed: () => () => {},
 
   // Settings & Themes
   getSettings: () => ipcRenderer.invoke('settings:get-all'),

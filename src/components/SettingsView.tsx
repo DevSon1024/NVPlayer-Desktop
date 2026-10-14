@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Palette,
   PlaySquare,
@@ -19,6 +19,9 @@ import {
   Film,
   SlidersHorizontal,
   Trash2,
+  AlertTriangle,
+  RefreshCw,
+  Loader2,
 } from 'lucide-react';
 import type { PlaybackStatus } from '../types/electron';
 import {
@@ -97,6 +100,41 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [feedbackMessage, setFeedbackMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
   const [isClearingCache, setIsClearingCache] = useState(false);
+  const [isGeneratingThumbnails, setIsGeneratingThumbnails] = useState(false);
+  const [thumbnailPendingCount, setThumbnailPendingCount] = useState(0);
+
+  useEffect(() => {
+    if (!window.nosvedAPI?.onThumbnailStatus) return;
+    if (window.nosvedAPI.getThumbnailStatus) {
+      window.nosvedAPI.getThumbnailStatus().then((status) => {
+        if (status) {
+          setIsGeneratingThumbnails(status.isGenerating);
+          setThumbnailPendingCount(status.pendingCount);
+        }
+      }).catch(() => {});
+    }
+
+    const unsub = window.nosvedAPI.onThumbnailStatus((status) => {
+      setIsGeneratingThumbnails(status.isGenerating);
+      setThumbnailPendingCount(status.pendingCount);
+      if (!status.isGenerating && isGeneratingThumbnails) {
+        showFeedback('success', 'All video thumbnails generated successfully.');
+      }
+    });
+    return unsub;
+  }, [isGeneratingThumbnails]);
+
+  const handleRefreshThumbnails = async () => {
+    if (!window.nosvedAPI?.refreshAllThumbnails) return;
+    setIsGeneratingThumbnails(true);
+    try {
+      await window.nosvedAPI.refreshAllThumbnails(true);
+      showFeedback('success', 'Background thumbnail generation started.');
+    } catch {
+      showFeedback('error', 'Failed to start thumbnail generation.');
+      setIsGeneratingThumbnails(false);
+    }
+  };
 
   const showFeedback = (type: 'success' | 'error', text: string) => {
     setFeedbackMessage({ type, text });
@@ -469,7 +507,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             {isSelected ? <Check size={16} /> : <Film size={16} />}
                           </div>
                           <div className="flex flex-col min-w-0 flex-1">
-                            <span className="text-xs font-semibold text-foreground">{strat.name}</span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-semibold text-foreground">{strat.name}</span>
+                              {strat.isBeta && (
+                                <span className="px-1.5 py-0.2 rounded text-[9px] font-bold uppercase tracking-wider bg-amber-500/15 text-amber-500 border border-amber-500/30">
+                                  Beta
+                                </span>
+                              )}
+                            </div>
                             <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">{strat.description}</p>
                           </div>
                         </div>
@@ -477,63 +522,101 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     })}
                   </div>
 
-                  {/* Frame Position Slider */}
+                  {/* Frame Position Beta Warning & Slider */}
                   {settings.thumbnailMode === 'frame_position' && (
-                    <div className="flex flex-col gap-2.5 p-4 rounded-xl bg-surface-elevated/60 border border-border mt-1">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <SlidersHorizontal size={15} className="text-primary" />
-                          <span className="text-xs font-semibold text-foreground">Frame Position Ratio</span>
+                    <div className="flex flex-col gap-3">
+                      <div className="flex items-start gap-2.5 p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-500">
+                        <AlertTriangle size={17} className="shrink-0 mt-0.5" />
+                        <div className="flex flex-col gap-0.5 text-left">
+                          <span className="text-xs font-bold uppercase tracking-wide">Beta Feature Warning</span>
+                          <p className="text-[11px] text-amber-500/90 leading-relaxed font-normal">
+                            Frame Position requires seeking to arbitrary points across media files. This can significantly increase CPU and disk utilization, and may cause the application to temporarily freeze while thumbnail generation takes time.
+                          </p>
                         </div>
-                        <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-bold bg-primary text-primary-foreground shadow-sm">
-                          {Math.round(settings.thumbnailFramePosition)}%
-                        </span>
                       </div>
-                      <input
-                        type="range"
-                        min="0"
-                        max="100"
-                        step="1"
-                        value={settings.thumbnailFramePosition}
-                        onChange={(e) => onUpdateSetting('thumbnailFramePosition', Number(e.target.value))}
-                        className="w-full h-2 bg-surface-dim rounded-lg appearance-none cursor-pointer accent-primary"
-                      />
-                      <div className="flex justify-between text-[10px] text-muted-foreground font-mono">
-                        <span>0% (First Frame)</span>
-                        <span>50% (Midpoint)</span>
-                        <span>100% (End of Video)</span>
+
+                      <div className="flex flex-col gap-2.5 p-4 rounded-xl bg-surface-elevated/60 border border-border">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <SlidersHorizontal size={15} className="text-primary" />
+                            <span className="text-xs font-semibold text-foreground">Frame Position Ratio</span>
+                          </div>
+                          <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-bold bg-primary text-primary-foreground shadow-sm">
+                            {Math.round(settings.thumbnailFramePosition)}%
+                          </span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0"
+                          max="100"
+                          step="1"
+                          value={settings.thumbnailFramePosition}
+                          onChange={(e) => onUpdateSetting('thumbnailFramePosition', Number(e.target.value))}
+                          className="w-full h-2 bg-surface-dim rounded-lg appearance-none cursor-pointer accent-primary"
+                        />
+                        <div className="flex justify-between text-[10px] text-muted-foreground font-mono">
+                          <span>0% (First Frame)</span>
+                          <span>50% (Midpoint)</span>
+                          <span>100% (End of Video)</span>
+                        </div>
                       </div>
                     </div>
                   )}
 
-                  {/* Clear Thumbnail Cache Button */}
-                  <div className="flex items-center justify-between gap-4 pt-3 border-t border-border/40">
+                  {/* Generating Status Animation */}
+                  {isGeneratingThumbnails && (
+                    <div className="flex items-center gap-3 p-3.5 rounded-xl bg-primary/10 border border-primary/25 text-primary text-xs">
+                      <Loader2 size={16} className="animate-spin shrink-0" />
+                      <div className="flex flex-col min-w-0 flex-1">
+                        <span className="font-semibold text-foreground">Generating Thumbnails in Background</span>
+                        <span className="text-[11px] text-muted-foreground mt-0.5">
+                          {thumbnailPendingCount > 0
+                            ? `${thumbnailPendingCount} video${thumbnailPendingCount === 1 ? '' : 's'} remaining. App remains responsive.`
+                            : 'Finalizing frame extraction...'}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Thumbnail Management Row */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-3 border-t border-border/40">
                     <div className="flex flex-col gap-0.5">
-                      <span className="text-xs font-semibold text-foreground">Clear Thumbnail Cache</span>
+                      <span className="text-xs font-semibold text-foreground">Thumbnail Management</span>
                       <span className="text-[11px] text-muted-foreground">
-                        Delete stored thumbnail files and database cache keys to re-extract with the current strategy.
+                        Refresh all thumbnails without reloading the page, or clear the local cache.
                       </span>
                     </div>
-                    <button
-                      type="button"
-                      disabled={isClearingCache}
-                      onClick={async () => {
-                        if (!onClearThumbnailCache) return;
-                        setIsClearingCache(true);
-                        try {
-                          await onClearThumbnailCache();
-                          showFeedback('success', 'Thumbnail cache cleared successfully.');
-                        } catch {
-                          showFeedback('error', 'Failed to clear thumbnail cache.');
-                        } finally {
-                          setIsClearingCache(false);
-                        }
-                      }}
-                      className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-destructive/10 text-destructive border border-destructive/20 hover:bg-destructive hover:text-destructive-foreground text-xs font-semibold transition cursor-pointer disabled:opacity-50 shrink-0"
-                    >
-                      <Trash2 size={14} />
-                      <span>{isClearingCache ? 'Clearing...' : 'Clear Cache'}</span>
-                    </button>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        type="button"
+                        disabled={isGeneratingThumbnails}
+                        onClick={handleRefreshThumbnails}
+                        className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-primary/10 text-primary border border-primary/20 hover:bg-primary hover:text-primary-foreground text-xs font-semibold transition cursor-pointer disabled:opacity-50 shrink-0"
+                      >
+                        <RefreshCw size={14} className={isGeneratingThumbnails ? 'animate-spin' : ''} />
+                        <span>{isGeneratingThumbnails ? `Generating (${thumbnailPendingCount})` : 'Refresh Thumbnails'}</span>
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isClearingCache || isGeneratingThumbnails}
+                        onClick={async () => {
+                          if (!onClearThumbnailCache) return;
+                          setIsClearingCache(true);
+                          try {
+                            await onClearThumbnailCache();
+                            showFeedback('success', 'Thumbnail cache cleared successfully.');
+                          } catch {
+                            showFeedback('error', 'Failed to clear thumbnail cache.');
+                          } finally {
+                            setIsClearingCache(false);
+                          }
+                        }}
+                        className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-destructive/10 text-destructive border border-destructive/20 hover:bg-destructive hover:text-destructive-foreground text-xs font-semibold transition cursor-pointer disabled:opacity-50 shrink-0"
+                      >
+                        <Trash2 size={14} />
+                        <span>{isClearingCache ? 'Clearing...' : 'Clear Cache'}</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}

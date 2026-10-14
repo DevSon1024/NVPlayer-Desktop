@@ -183,6 +183,8 @@ export interface NosvedAPI {
   refreshAllThumbnails: (force?: boolean) => Promise<boolean>;
   cleanupThumbnails: () => Promise<void>;
   clearThumbnailCache: () => Promise<boolean>;
+  getThumbnailStatus: () => Promise<{ isGenerating: boolean; pendingCount: number }>;
+  onThumbnailStatus: (callback: (status: { isGenerating: boolean; pendingCount: number }) => void) => () => void;
   onMediaMetadataUpdated: (callback: (media: MediaItem) => void) => () => void;
   onF5Pressed: (callback: () => void) => () => void;
 

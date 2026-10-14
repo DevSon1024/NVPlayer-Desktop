@@ -171,7 +171,6 @@ export const App: React.FC = () => {
 
       if (e.key === 'F5') {
         e.preventDefault();
-        handleRefreshAll();
         return;
       }
 

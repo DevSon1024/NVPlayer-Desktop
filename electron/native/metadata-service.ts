@@ -7,8 +7,11 @@ import {
   MpvFunctions,
   safeGetMpvPropertyString,
   MPV_EVENT,
+  decodeMpvEvent,
 } from './mpv-bindings';
 import { MediaDatabase, MediaRecord } from '../database/media-db';
+
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 let electronNativeImage: typeof import('electron').nativeImage | null = null;
 try {
@@ -38,10 +41,10 @@ export function computeMediaThumbnailKey(
   fileSize: number | null,
   lastModified: number | null,
   strategy = 'smart',
-  position = 33
+  position = 5
 ): string {
   const norm = path.resolve(filePath).toLowerCase();
-  const stratKey = strategy === 'frame_position' ? `frame_pos_${Math.round(position)}` : strategy;
+  const stratKey = strategy === 'frame_position' ? `frame_pos_${Math.round(position)}` : 'smart_5';
   return crypto
     .createHash('sha256')
     .update(`${norm}:${fileSize ?? 0}:${lastModified ?? 0}:${stratKey}`)
@@ -133,13 +136,20 @@ export function inspectJpegFile(filePath: string): JpegInspectionResult {
 
 export type MetadataUpdateCallback = (media: MediaRecord) => void;
 
+export interface ThumbnailGenerationStatus {
+  isGenerating: boolean;
+  pendingCount: number;
+}
+
+export type StatusUpdateCallback = (status: ThumbnailGenerationStatus) => void;
+
 interface ExtractionJob {
   filePath: string;
   mediaId?: string;
   fileSize: number | null;
   lastModified: number | null;
   cacheKey: string;
-  mode: 'smart' | 'first_frame' | 'frame_position' | 'embedded';
+  mode: 'smart' | 'frame_position';
   position: number;
   force: boolean;
   priority: number;
@@ -151,9 +161,10 @@ export class MetadataService {
   private mediaDb: MediaDatabase;
   private funcsGetter: () => MpvFunctions;
   private updateCallbacks: MetadataUpdateCallback[] = [];
+  private statusCallbacks: StatusUpdateCallback[] = [];
 
   // Bounded prioritized worker scheduler
-  private readonly maxConcurrency = 2;
+  private readonly maxConcurrency = 1;
   private activeWorkers = 0;
   private queue: ExtractionJob[] = [];
   private inFlightMap = new Map<string, Promise<ExtractedMetadata | null>>();
@@ -164,6 +175,32 @@ export class MetadataService {
     return () => {
       this.updateCallbacks = this.updateCallbacks.filter((cb) => cb !== callback);
     };
+  }
+
+  public onStatusChanged(callback: StatusUpdateCallback): () => void {
+    this.statusCallbacks.push(callback);
+    return () => {
+      this.statusCallbacks = this.statusCallbacks.filter((cb) => cb !== callback);
+    };
+  }
+
+  public getStatus(): ThumbnailGenerationStatus {
+    const pendingCount = this.queue.length + this.activeWorkers;
+    return {
+      isGenerating: pendingCount > 0,
+      pendingCount,
+    };
+  }
+
+  private notifyStatus(): void {
+    const status = this.getStatus();
+    for (const cb of this.statusCallbacks) {
+      try {
+        cb(status);
+      } catch (err) {
+        console.error('[MetadataService] Error in status callback:', err);
+      }
+    }
   }
 
   constructor(
@@ -199,14 +236,12 @@ export class MetadataService {
     return null;
   }
 
-  public getThumbnailStrategy(): { mode: 'smart' | 'first_frame' | 'frame_position' | 'embedded'; position: number } {
-    const rawMode = this.mediaDb.getSetting('thumbnailMode') as 'smart' | 'first_frame' | 'frame_position' | 'embedded' | null;
-    const mode = (rawMode && ['smart', 'first_frame', 'frame_position', 'embedded'].includes(rawMode))
-      ? rawMode
-      : 'smart';
+  public getThumbnailStrategy(): { mode: 'smart' | 'frame_position'; position: number } {
+    const rawMode = this.mediaDb.getSetting('thumbnailMode');
+    const mode: 'smart' | 'frame_position' = rawMode === 'frame_position' ? 'frame_position' : 'smart';
     const rawPos = this.mediaDb.getSetting('thumbnailFramePosition');
-    const position = rawPos !== null ? Math.max(0, Math.min(100, Number(rawPos))) : 33;
-    return { mode, position: isNaN(position) ? 33 : position };
+    const position = mode === 'smart' ? 5 : (rawPos !== null ? Math.max(0, Math.min(100, Number(rawPos))) : 5);
+    return { mode, position: isNaN(position) ? 5 : position };
   }
 
   public extractForMedia(media: MediaRecord, force = false, priority = 2): Promise<ExtractedMetadata | null> {
@@ -377,6 +412,7 @@ export class MetadataService {
     });
 
     this.inFlightMap.set(dedupKey, taskPromise);
+    this.notifyStatus();
     this.schedule();
     return taskPromise;
   }
@@ -391,12 +427,14 @@ export class MetadataService {
       if (!job) break;
 
       this.activeWorkers++;
+      this.notifyStatus();
       const dedupKey = `${job.filePath}:${job.cacheKey}`;
       void this.executeJob(job).finally(() => {
         this.activeWorkers--;
         this.inFlightMap.delete(dedupKey);
+        this.notifyStatus();
         // Cooperative yield to event loop
-        setImmediate(() => this.schedule());
+        setTimeout(() => this.schedule(), 20);
       });
     }
   }
@@ -518,14 +556,28 @@ export class MetadataService {
         throw new Error(`loadfile command failed with code ${loadCode}`);
       }
 
-      // Process initial load events (wait for FILE_LOADED = 8 or duration available)
-      for (let i = 0; i < 30; i++) {
-        const ev = funcs.mpv_wait_event(ctx, 0.05);
-        if (ev && (ev as { event_id?: number }).event_id === MPV_EVENT.FILE_LOADED) {
-          break;
+      // Helper to drain pending libmpv events without blocking
+      const drainMpvEvents = (targetEventId?: number): boolean => {
+        let matched = false;
+        while (true) {
+          const evPtr = funcs.mpv_wait_event(ctx, 0);
+          if (!evPtr) break;
+          const ev = decodeMpvEvent(evPtr);
+          if (!ev || ev.event_id === MPV_EVENT.NONE) break;
+          if (targetEventId !== undefined && ev.event_id === targetEventId) {
+            matched = true;
+          }
         }
+        return matched;
+      };
+
+      // Process initial load events (non-blocking wait for FILE_LOADED or duration)
+      for (let i = 0; i < 40; i++) {
+        const loaded = drainMpvEvents(MPV_EVENT.FILE_LOADED);
+        if (loaded) break;
         const dur = safeGetMpvPropertyString(funcs, ctx, 'duration');
         if (dur) break;
+        await sleep(20);
       }
 
       // Discover tracks
@@ -553,11 +605,11 @@ export class MetadataService {
 
       let chosenCandidate: string | null = null;
 
-      // 1. Separate embedded artwork extraction
+      // 1. Separate embedded artwork extraction (non-blocking)
       if ((mode === 'smart' || mode === 'embedded') && albumArtTrackId) {
         funcs.mpv_set_property_string(ctx, 'vid', albumArtTrackId);
-        for (let i = 0; i < 15; i++) {
-          funcs.mpv_wait_event(ctx, 0.05);
+        for (let i = 0; i < 20; i++) {
+          drainMpvEvents();
           const files = fs.readdirSync(tempDir).filter((f) => f.toLowerCase().endsWith('.jpg'));
           if (files.length > 0) {
             const cand = path.join(tempDir, files[0]);
@@ -567,6 +619,7 @@ export class MetadataService {
               break;
             }
           }
+          await sleep(20);
         }
       }
 
@@ -576,36 +629,33 @@ export class MetadataService {
           funcs.mpv_set_property_string(ctx, 'vid', mainVideoTrackId);
         }
 
-        let targetPct = 33;
-        if (mode === 'first_frame') {
-          targetPct = 0;
-        } else if (mode === 'frame_position') {
+        let targetPct = 5;
+        if (mode === 'frame_position') {
           targetPct = Math.max(0, Math.min(100, Math.round(position)));
-        } else if (mode === 'smart' || mode === 'embedded') {
-          targetPct = 33;
+        } else {
+          targetPct = 5;
         }
 
-        const extractFrameAt = (pct: number): string | null => {
+        const extractFrameAt = async (pct: number): Promise<string | null> => {
           const before = new Set(fs.readdirSync(tempDir));
           if (pct > 0) {
-            funcs.mpv_command(ctx, ['seek', String(pct), 'absolute-percent+exact', null]);
-            for (let i = 0; i < 20; i++) {
-              const ev = funcs.mpv_wait_event(ctx, 0.05);
-              // MPV_EVENT.PLAYBACK_RESTART = 21
-              if (ev && (ev as { event_id?: number }).event_id === MPV_EVENT.PLAYBACK_RESTART) {
-                break;
-              }
+            funcs.mpv_command(ctx, ['seek', String(pct), 'absolute-percent', null]);
+            for (let i = 0; i < 30; i++) {
+              const restarted = drainMpvEvents(MPV_EVENT.PLAYBACK_RESTART);
+              if (restarted) break;
+              await sleep(15);
             }
           }
 
           funcs.mpv_command(ctx, ['frame-step', null]);
-          for (let i = 0; i < 15; i++) {
-            funcs.mpv_wait_event(ctx, 0.05);
+          for (let i = 0; i < 30; i++) {
+            drainMpvEvents();
             const files = fs.readdirSync(tempDir).filter((f) => f.toLowerCase().endsWith('.jpg'));
             const newFiles = files.filter((f) => !before.has(f));
             if (newFiles.length > 0) {
               return path.join(tempDir, newFiles[newFiles.length - 1]);
             }
+            await sleep(15);
           }
 
           const allFiles = fs.readdirSync(tempDir).filter((f) => f.toLowerCase().endsWith('.jpg'));
@@ -613,26 +663,24 @@ export class MetadataService {
           return allFiles.length > 0 ? path.join(tempDir, allFiles[allFiles.length - 1]) : null;
         };
 
-        const initialFrame = extractFrameAt(targetPct);
+        const initialFrame = await extractFrameAt(targetPct);
         if (initialFrame) {
           const insp = inspectJpegFile(initialFrame);
           if (insp.valid && !insp.isBlack) {
             chosenCandidate = initialFrame;
           } else if (insp.valid && insp.isBlack) {
-            // Initial frame is black/blank: attempt bounded forward step
-            if (targetPct === 0 && durSec > 5) {
-              // First frame mode: try step forward to 2%
-              const frame2 = extractFrameAt(2);
+            // Initial frame is black/blank: attempt bounded forward step for early frame detection
+            if (targetPct <= 5 && durSec > 10) {
+              const frame2 = await extractFrameAt(10);
               if (frame2) {
                 const insp2 = inspectJpegFile(frame2);
                 if (insp2.valid && !insp2.isBlack) {
                   chosenCandidate = frame2;
                 } else if (durSec > 30) {
-                  // If still black, try 5%
-                  const frame3 = extractFrameAt(5);
+                  const frame3 = await extractFrameAt(15);
                   if (frame3) {
                     const insp3 = inspectJpegFile(frame3);
-                    chosenCandidate = insp3.valid && !insp3.isBlack ? frame3 : frame1Fallback(frame2, initialFrame);
+                    chosenCandidate = insp3.valid && !insp3.isBlack ? frame3 : frame2;
                   } else {
                     chosenCandidate = frame2;
                   }
@@ -642,9 +690,8 @@ export class MetadataService {
               } else {
                 chosenCandidate = initialFrame;
               }
-            } else if (targetPct === 33 && durSec > 30) {
-              // Smart/embedded fallback: 33% was black, try 50%
-              const frameAlt = extractFrameAt(50);
+            } else if (durSec > 30) {
+              const frameAlt = await extractFrameAt(Math.min(95, targetPct + 10));
               if (frameAlt && inspectJpegFile(frameAlt).valid && !inspectJpegFile(frameAlt).isBlack) {
                 chosenCandidate = frameAlt;
               } else {
@@ -763,6 +810,7 @@ export class MetadataService {
     }
     this.queue = [];
     this.inFlightMap.clear();
+    this.notifyStatus();
   }
 }
 

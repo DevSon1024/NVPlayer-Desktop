@@ -14,34 +14,26 @@ export type AccentPalette =
   | 'catppuccin'
   | 'ocean';
 
-export type ThumbnailMode = 'smart' | 'first_frame' | 'frame_position' | 'embedded';
+export type ThumbnailMode = 'smart' | 'frame_position';
 
 export interface ThumbnailStrategyOption {
   id: ThumbnailMode;
   name: string;
   description: string;
+  isBeta?: boolean;
 }
 
 export const THUMBNAIL_STRATEGIES: ThumbnailStrategyOption[] = [
   {
     id: 'smart',
-    name: 'Smart (embedded + 33%)',
-    description: 'Uses embedded cover art if available, otherwise extracts a high-quality frame at 33% of duration',
-  },
-  {
-    id: 'first_frame',
-    name: 'First Frame',
-    description: 'Captures the opening first frame of the video',
+    name: 'Smart (Embedded + 5%)',
+    description: 'Default fast strategy: prioritizes embedded cover art, falling back to a rapid early frame at 5% of duration',
   },
   {
     id: 'frame_position',
-    name: 'Frame Position',
-    description: 'Captures a frame at an exact percentage ratio of the video duration (configurable via slider)',
-  },
-  {
-    id: 'embedded',
-    name: 'Embedded Thumbnail',
-    description: 'Uses attached cover art picture, falling back to the first frame if none is present',
+    name: 'Frame Position (Beta)',
+    description: 'Extracts a frame at a custom exact percentage ratio of the video duration (configurable via slider)',
+    isBeta: true,
   },
 ];
 
@@ -217,7 +209,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
 
   showThumbnails: true,
   thumbnailMode: 'smart',
-  thumbnailFramePosition: 33,
+  thumbnailFramePosition: 5,
 
   autoPlayNext: true,
   resumePlaybackPrompt: true,
@@ -252,7 +244,7 @@ export function parseSettingsFromRaw(raw: Record<string, string>): AppSettings {
     compactUi: raw.compactUi !== undefined ? raw.compactUi === 'true' : DEFAULT_SETTINGS.compactUi,
 
     showThumbnails: raw.showThumbnails !== undefined ? raw.showThumbnails === 'true' : DEFAULT_SETTINGS.showThumbnails,
-    thumbnailMode: (raw.thumbnailMode as ThumbnailMode) || DEFAULT_SETTINGS.thumbnailMode,
+    thumbnailMode: raw.thumbnailMode === 'frame_position' ? 'frame_position' : 'smart',
     thumbnailFramePosition: raw.thumbnailFramePosition ? Number(raw.thumbnailFramePosition) : DEFAULT_SETTINGS.thumbnailFramePosition,
 
     autoPlayNext: raw.autoPlayNext !== undefined ? raw.autoPlayNext === 'true' : DEFAULT_SETTINGS.autoPlayNext,

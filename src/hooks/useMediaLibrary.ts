@@ -81,13 +81,6 @@ export function useMediaLibrary(activeTab: string) {
     refreshRecent();
   }, [refreshLibrary, refreshRecent]);
 
-  useEffect(() => {
-    if (!window.nosvedAPI?.onF5Pressed) return;
-    const unsub = window.nosvedAPI.onF5Pressed(() => {
-      handleRefreshAll();
-    });
-    return unsub;
-  }, [handleRefreshAll]);
 
   useEffect(() => {
     if (!window.nosvedAPI?.onMediaMetadataUpdated) return;

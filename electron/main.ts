@@ -103,7 +103,6 @@ function createWindow(): void {
   mainWindow.webContents.on('before-input-event', (event, input) => {
     if (input.key === 'F5' && input.type === 'keyDown') {
       event.preventDefault();
-      mainWindow?.webContents.send('app:f5-pressed');
     }
   });
 
@@ -361,6 +360,11 @@ app.whenReady().then(() => {
     metadataService.onMetadataUpdated((updatedMedia) => {
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('media:metadata-updated', updatedMedia);
+      }
+    });
+    metadataService.onStatusChanged((status) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('metadata:status-updated', status);
       }
     });
   } catch (err) {

@@ -79,4 +79,12 @@ export function registerMetadataHandlers(ctx: MetadataHandlerContext): void {
     }
     return true;
   });
+
+  ipcMain.handle('metadata:get-status', (event) => {
+    if (!validateIpcSender(event, ctx.getMainWindow(), ctx.isDev)) {
+      throw new Error('Unauthorized IPC invocation: Sender validation failed');
+    }
+    const metadataService = ctx.getMetadataService();
+    return metadataService ? metadataService.getStatus() : { isGenerating: false, pendingCount: 0 };
+  });
 }
