@@ -76,8 +76,8 @@ export function getSqliteFunctions(): SqliteFunctions | null {
 
   try {
     const sqlite = koffi.load('winsqlite3.dll');
-    const sqlite3 = koffi.opaque('sqlite3');
-    const sqlite3_stmt = koffi.opaque('sqlite3_stmt');
+    koffi.opaque('sqlite3');
+    koffi.opaque('sqlite3_stmt');
 
     cachedSqliteFuncs = {
       sqlite3_open: sqlite.func('int sqlite3_open(const char *filename, _Out_ sqlite3 **ppDb)'),

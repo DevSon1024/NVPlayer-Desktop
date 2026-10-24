@@ -1,4 +1,4 @@
-import { dialog, ipcMain, BrowserWindow } from 'electron';
+import { dialog, ipcMain, BrowserWindow, shell } from 'electron';
 import { validateIpcSender } from './ipc-validator';
 import { SUPPORTED_VIDEO_EXTENSIONS, NativePlayerService } from '../native/player-service';
 import type { NativeVideoWindow } from '../native/video-window';
@@ -264,5 +264,50 @@ export function registerPlayerHandlers(ctx: PlayerHandlerContext): void {
       throw new Error('Invalid argument: Seconds must be a finite number');
     }
     return ctx.playerService.setAudioDelay(seconds);
+  });
+
+  ipcMain.handle('player:frame-step', (event) => {
+    if (!validateIpcSender(event, ctx.getMainWindow(), ctx.isDev)) {
+      throw new Error('Unauthorized IPC invocation: Sender validation failed');
+    }
+    ctx.playerService.frameStep();
+    return ctx.playerService.getPlaybackStatus();
+  });
+
+  ipcMain.handle('player:frame-back-step', (event) => {
+    if (!validateIpcSender(event, ctx.getMainWindow(), ctx.isDev)) {
+      throw new Error('Unauthorized IPC invocation: Sender validation failed');
+    }
+    ctx.playerService.frameBackStep();
+    return ctx.playerService.getPlaybackStatus();
+  });
+
+  ipcMain.handle('player:capture-frame', async (event, customDir?: unknown) => {
+    if (!validateIpcSender(event, ctx.getMainWindow(), ctx.isDev)) {
+      throw new Error('Unauthorized IPC invocation: Sender validation failed');
+    }
+    const dir = typeof customDir === 'string' && customDir.trim() ? customDir.trim() : undefined;
+    return ctx.playerService.captureFrame(dir);
+  });
+
+  ipcMain.handle('player:set-speed', async (event, speed: unknown) => {
+    if (!validateIpcSender(event, ctx.getMainWindow(), ctx.isDev)) {
+      throw new Error('Unauthorized IPC invocation: Sender validation failed');
+    }
+    if (typeof speed !== 'number' || !Number.isFinite(speed)) {
+      throw new Error('Invalid argument: Speed must be a finite number');
+    }
+    return ctx.playerService.setSpeed(speed);
+  });
+
+  ipcMain.handle('shell:show-item-in-folder', async (event, filePath: unknown) => {
+    if (!validateIpcSender(event, ctx.getMainWindow(), ctx.isDev)) {
+      throw new Error('Unauthorized IPC invocation: Sender validation failed');
+    }
+    if (typeof filePath === 'string' && filePath.trim()) {
+      shell.showItemInFolder(filePath.trim());
+      return true;
+    }
+    return false;
   });
 }

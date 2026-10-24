@@ -14,6 +14,9 @@ export interface PlaybackStatusPayload {
   muted: boolean;
   videoWidth?: number | null;
   videoHeight?: number | null;
+  fps?: number | null;
+  hwdec?: string | null;
+  speed?: number;
   error?: string;
 }
 
@@ -146,6 +149,11 @@ export interface NosvedAPI {
   setVideoBounds: (bounds: { x: number; y: number; width: number; height: number; visible?: boolean }) => Promise<{ success: boolean }>;
   getPlaybackStatus: () => Promise<PlaybackStatusPayload>;
   onPlaybackStatus: (callback: (status: PlaybackStatusPayload) => void) => () => void;
+  frameStep: () => Promise<PlaybackStatusPayload>;
+  frameBackStep: () => Promise<PlaybackStatusPayload>;
+  captureFrame: (customDir?: string) => Promise<{ success: boolean; filePath?: string; frameNumber?: number; error?: string }>;
+  setSpeed: (speed: number) => Promise<PlaybackStatusPayload>;
+  showItemInFolder: (filePath: string) => Promise<boolean>;
 
   // Track APIs
   getTracks: () => Promise<PlayerTracksSnapshotPayload>;
@@ -239,6 +247,11 @@ const api: NosvedAPI = {
       ipcRenderer.removeListener('player:playback-status-update', handler);
     };
   },
+  frameStep: () => ipcRenderer.invoke('player:frame-step'),
+  frameBackStep: () => ipcRenderer.invoke('player:frame-back-step'),
+  captureFrame: (customDir?: string) => ipcRenderer.invoke('player:capture-frame', customDir),
+  setSpeed: (speed: number) => ipcRenderer.invoke('player:set-speed', speed),
+  showItemInFolder: (filePath: string) => ipcRenderer.invoke('shell:show-item-in-folder', filePath),
 
   // Fullscreen IPC calls
   toggleFullscreen: () => ipcRenderer.invoke('window:toggle-fullscreen'),

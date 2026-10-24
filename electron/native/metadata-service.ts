@@ -149,7 +149,7 @@ interface ExtractionJob {
   fileSize: number | null;
   lastModified: number | null;
   cacheKey: string;
-  mode: 'smart' | 'frame_position';
+  mode: 'smart' | 'frame_position' | 'first_frame' | 'embedded';
   position: number;
   force: boolean;
   priority: number;
@@ -812,8 +812,4 @@ export class MetadataService {
     this.inFlightMap.clear();
     this.notifyStatus();
   }
-}
-
-function frame1Fallback(cand: string | null, def: string | null): string | null {
-  return cand || def;
 }

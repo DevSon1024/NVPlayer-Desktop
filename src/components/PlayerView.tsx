@@ -13,17 +13,18 @@ import {
   Clock,
   SkipBack,
   SkipForward,
-  ListMusic,
   Headphones,
   Subtitles,
   Check,
   Sliders,
   FileText,
   ArrowLeft,
-  Film,
+  Camera,
 } from 'lucide-react';
 import type { PlaybackStatus, PlaylistItem, PlayerTracksSnapshot } from '../types/electron';
 import { formatTime } from '../utils/formatters';
+import { M3GappedScrubber } from './M3GappedScrubber';
+import { FrameCaptureModal } from './FrameCaptureModal';
 
 export interface ActivePlaylistState {
   playlistId: string;
@@ -38,7 +39,7 @@ export interface ResumePromptState {
   duration: number | null;
 }
 
-interface PlayerViewProps {
+export interface PlayerViewProps {
   videoViewportRef: React.Ref<HTMLDivElement>;
   playbackStatus: PlaybackStatus;
   activePlaylist: ActivePlaylistState | null;
@@ -70,7 +71,22 @@ interface PlayerViewProps {
   onControlsMouseLeave: () => void;
   onControlsFocus: () => void;
   onControlsBlur: () => void;
+  onFrameStep?: () => void;
+  onFrameBackStep?: () => void;
+  onCaptureFrame?: (customDir?: string) => Promise<{ success: boolean; filePath?: string; frameNumber?: number; error?: string }>;
+  onSetSpeed?: (speed: number) => void;
 }
+
+const SPEED_STEPS = [0.5, 1.0, 1.25, 1.5, 2.0];
+
+const formatCleanTitle = (filePath: string | null): string => {
+  if (!filePath) return '';
+  const fileName = filePath.split(/[/\\]/).pop() || filePath;
+  const nameWithoutExt = fileName.replace(/\.[^/.]+$/, '');
+  return nameWithoutExt.replace(/[._]/g, ' ');
+};
+
+
 
 export const PlayerView: React.FC<PlayerViewProps> = ({
   videoViewportRef,
@@ -89,8 +105,6 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
   onTogglePlayPause,
   onToggleMute,
   onVolumeChange,
-  onSeekSliderChange,
-  onSeekMouseDown,
   onCommitSeek,
   onTriggerFullscreenToggle,
   onPlayNextPlaylistItem,
@@ -104,6 +118,10 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
   onControlsMouseLeave,
   onControlsFocus,
   onControlsBlur,
+  onFrameStep,
+  onFrameBackStep,
+  onCaptureFrame,
+  onSetSpeed,
 }) => {
   const [tracks, setTracks] = useState<PlayerTracksSnapshot | null>(null);
   const [internalModalOpen, setInternalModalOpen] = useState(false);
@@ -141,6 +159,33 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
     }, durationMs);
   }, []);
 
+  // Frame Capture Modal State
+  const [isFrameCaptureOpen, setIsFrameCaptureOpen] = useState(false);
+
+  const handleToggleFrameCapture = useCallback(() => {
+    setIsFrameCaptureOpen((prev) => {
+      const next = !prev;
+      if (next && !playbackStatus.paused) {
+        onTogglePlayPause();
+      }
+      return next;
+    });
+  }, [playbackStatus.paused, onTogglePlayPause]);
+
+  const handleCycleSpeed = useCallback(() => {
+    const currentSpeed = playbackStatus.speed ?? 1.0;
+    const currentIndex = SPEED_STEPS.findIndex((s) => Math.abs(s - currentSpeed) < 0.05);
+    const nextSpeed =
+      (currentIndex >= 0 && currentIndex < SPEED_STEPS.length - 1
+        ? SPEED_STEPS[currentIndex + 1]
+        : SPEED_STEPS[0]) ?? 1.0;
+    if (onSetSpeed) {
+      onSetSpeed(nextSpeed);
+    } else if (window.nosvedAPI?.setSpeed) {
+      window.nosvedAPI.setSpeed(nextSpeed);
+    }
+  }, [playbackStatus.speed, onSetSpeed]);
+
   // Viewport Mouse Wheel Gesture: Vertical -> Volume, Horizontal / Shift+Wheel -> Seek
   const handleViewportWheel = useCallback(
     (e: React.WheelEvent) => {
@@ -150,7 +195,6 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
       if (!playbackStatus.currentFile) return;
 
       if (Math.abs(e.deltaX) > Math.abs(e.deltaY) || e.shiftKey) {
-        // Horizontal scroll: Seek
         const delta = e.shiftKey ? e.deltaY : e.deltaX;
         const step = delta > 0 ? 5 : -5;
         const currentPos = playbackStatus.position ?? 0;
@@ -163,7 +207,6 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
           subValue: formatTime(targetPos),
         });
       } else {
-        // Vertical scroll: Volume
         const step = e.deltaY < 0 ? 5 : -5;
         const newVol = Math.max(0, Math.min(100, Math.round(playbackStatus.volume + step)));
         if (window.nosvedAPI?.setVolume) {
@@ -253,8 +296,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
     setTimeout(() => setIsPointerDragging(false), 60);
   };
 
-  // Viewport Click & Double-Tap Zones:
-  // Left 35% double-tap: -10s | Right 35% double-tap: +10s | Center double-tap: Fullscreen | Single click: Play/Pause
+  // Viewport Click & Double-Tap Zones
   const handleViewportClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (isPointerDragging) return;
 
@@ -298,54 +340,56 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
   const fetchTracks = useCallback(async () => {
     if (window.nosvedAPI?.getTracks) {
       try {
-        const snap = await window.nosvedAPI.getTracks();
-        setTracks(snap);
+        const snapshot = await window.nosvedAPI.getTracks();
+        setTracks(snapshot);
       } catch (err) {
-        console.error('Failed to get tracks:', err);
+        console.error('Failed to get tracks snapshot:', err);
       }
     }
   }, []);
 
-  // Poll tracks on file load and playback start to catch asynchronous demuxing
+  // Keyboard navigation & playback shortcuts
   useEffect(() => {
-    if (playbackStatus.currentFile && playbackStatus.mediaState !== 'idle' && playbackStatus.mediaState !== 'loading') {
-      fetchTracks();
-      const t1 = setTimeout(fetchTracks, 300);
-      const t2 = setTimeout(fetchTracks, 1000);
-      return () => {
-        clearTimeout(t1);
-        clearTimeout(t2);
-      };
-    }
-  }, [playbackStatus.currentFile, playbackStatus.mediaState, fetchTracks]);
-
-  // Comprehensive PlayerView keyboard shortcuts
-  useEffect(() => {
-    const handlePlayerKeyDown = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement)?.tagName)) {
         return;
       }
 
-      // 'Escape' -> Close track modal
-      if (e.key === 'Escape') {
-        if (isTrackModalOpen) {
-          e.preventDefault();
-          e.stopPropagation();
-          setModalOpen(false);
-          return;
-        }
-      }
+      const isCtrlF = (e.ctrlKey || e.metaKey) && e.code === 'KeyF';
 
-      // 'Backspace' -> Navigate back from PlayerView screen
-      if (e.key === 'Backspace') {
+      // Toggle Frame Capture mode via Ctrl+F (or Cmd+F)
+      if (isCtrlF) {
         e.preventDefault();
         e.stopPropagation();
+        handleToggleFrameCapture();
+        return;
+      }
+
+      // Standard Cinema Fullscreen Toggle via 'F' (without Ctrl/Meta/Shift/Alt)
+      if (e.code === 'KeyF' && !e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey) {
+        e.preventDefault();
+        e.stopPropagation();
+        onTriggerFullscreenToggle();
+        return;
+      }
+
+      if (e.code === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        if (resumePrompt) {
+          onDismissResumePrompt();
+          return;
+        }
+        if (playbackStatus.error) {
+          onDismissError();
+          return;
+        }
         if (isTrackModalOpen) {
           setModalOpen(false);
           return;
         }
-        if (resumePrompt) {
-          onDismissResumePrompt();
+        if (isFullscreen) {
+          onTriggerFullscreenToggle();
           return;
         }
         if (onNavigateBack) {
@@ -354,7 +398,6 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
         return;
       }
 
-      // 'Space' / 'KeyK' -> Play / Pause
       if (e.code === 'Space' || e.code === 'KeyK') {
         e.preventDefault();
         e.stopPropagation();
@@ -365,7 +408,6 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
         return;
       }
 
-      // 'KeyJ' -> 10s Rewind
       if (e.code === 'KeyJ') {
         e.preventDefault();
         e.stopPropagation();
@@ -377,7 +419,6 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
         return;
       }
 
-      // 'KeyL' -> 10s Fast-Forward
       if (e.code === 'KeyL') {
         e.preventDefault();
         e.stopPropagation();
@@ -390,7 +431,6 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
         return;
       }
 
-      // 'ArrowLeft' -> 5s Seek Backward
       if (e.code === 'ArrowLeft') {
         e.preventDefault();
         e.stopPropagation();
@@ -402,7 +442,6 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
         return;
       }
 
-      // 'ArrowRight' -> 5s Seek Forward
       if (e.code === 'ArrowRight') {
         e.preventDefault();
         e.stopPropagation();
@@ -415,7 +454,6 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
         return;
       }
 
-      // 'ArrowUp' -> Volume Up 5%
       if (e.code === 'ArrowUp') {
         e.preventDefault();
         e.stopPropagation();
@@ -427,7 +465,6 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
         return;
       }
 
-      // 'ArrowDown' -> Volume Down 5%
       if (e.code === 'ArrowDown') {
         e.preventDefault();
         e.stopPropagation();
@@ -439,7 +476,6 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
         return;
       }
 
-      // 'KeyM' -> Toggle Mute
       if (e.code === 'KeyM') {
         e.preventDefault();
         e.stopPropagation();
@@ -451,15 +487,6 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
         return;
       }
 
-      // 'KeyF' -> Fullscreen Toggle
-      if (e.code === 'KeyF') {
-        e.preventDefault();
-        e.stopPropagation();
-        onTriggerFullscreenToggle();
-        return;
-      }
-
-      // 'A' / 'KeyA' -> Open / toggle Audio tracks
       if (e.code === 'KeyA') {
         e.preventDefault();
         e.stopPropagation();
@@ -473,7 +500,6 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
         return;
       }
 
-      // 'S' / 'KeyS' -> Open / toggle Subtitle tracks
       if (e.code === 'KeyS') {
         e.preventDefault();
         e.stopPropagation();
@@ -487,7 +513,6 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
         return;
       }
 
-      // 'O' / 'KeyO' -> Open media file dialog
       if (e.code === 'KeyO') {
         e.preventDefault();
         e.stopPropagation();
@@ -495,7 +520,6 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
         return;
       }
 
-      // 'N' / 'KeyN' -> Next item in playlist
       if (e.code === 'KeyN' && activePlaylist) {
         e.preventDefault();
         e.stopPropagation();
@@ -503,59 +527,46 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
         return;
       }
 
-      // 'P' / 'KeyP' -> Previous item in playlist
       if (e.code === 'KeyP' && activePlaylist) {
         e.preventDefault();
         e.stopPropagation();
         onPlayPrevPlaylistItem();
         return;
       }
-
-      // Digit keys 0-9 -> Jump to position percentage (0% to 90%)
-      if (e.code >= 'Digit0' && e.code <= 'Digit9' && !e.ctrlKey && !e.altKey && !e.metaKey) {
-        if (playbackStatus.duration && playbackStatus.duration > 0) {
-          e.preventDefault();
-          e.stopPropagation();
-          const digit = parseInt(e.code.replace('Digit', ''), 10);
-          const targetSeconds = (playbackStatus.duration * digit) / 10;
-          onCommitSeek(targetSeconds);
-          triggerOsd({
-            type: 'seek',
-            value: `${digit * 10}%`,
-            subValue: formatTime(targetSeconds),
-          });
-          return;
-        }
-      }
     };
 
-    window.addEventListener('keydown', handlePlayerKeyDown);
-    return () => window.removeEventListener('keydown', handlePlayerKeyDown);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
   }, [
-    isTrackModalOpen,
-    activeTab,
-    fetchTracks,
-    setModalOpen,
-    onNavigateBack,
-    onOpenFile,
-    activePlaylist,
-    onPlayNextPlaylistItem,
-    onPlayPrevPlaylistItem,
-    playbackStatus.duration,
-    playbackStatus.position,
+    isFrameCaptureOpen,
+    handleToggleFrameCapture,
     playbackStatus.paused,
+    playbackStatus.position,
+    playbackStatus.duration,
     playbackStatus.volume,
     playbackStatus.muted,
+    playbackStatus.error,
+    playbackStatus.fps,
+    isFullscreen,
+    isTrackModalOpen,
+    activeTab,
+    activePlaylist,
+    onOpenFile,
+    onPlayNextPlaylistItem,
+    onPlayPrevPlaylistItem,
     onCommitSeek,
+    onDismissError,
+    onNavigateBack,
     onTogglePlayPause,
     onToggleMute,
     onTriggerFullscreenToggle,
     triggerOsd,
     resumePrompt,
     onDismissResumePrompt,
+    fetchTracks,
+    setModalOpen,
   ]);
 
-  // Audio track selection handler
   const handleSelectAudioTrack = async (trackId: number) => {
     if (window.nosvedAPI?.setAudioTrack) {
       try {
@@ -567,7 +578,6 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
     }
   };
 
-  // Subtitle track selection handler
   const handleSelectSubtitleTrack = async (trackId: number | 'no') => {
     if (window.nosvedAPI?.setSubtitleTrack) {
       try {
@@ -582,7 +592,6 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
     }
   };
 
-  // Subtitle visibility toggle handler
   const handleToggleSubtitlesVisible = async (visible: boolean) => {
     if (window.nosvedAPI?.setSubtitlesVisible) {
       try {
@@ -594,7 +603,6 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
     }
   };
 
-  // External subtitle file loader
   const handleLoadExternalSubtitle = async () => {
     if (window.nosvedAPI?.selectSubtitleFile) {
       try {
@@ -608,7 +616,6 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
     }
   };
 
-  // Audio delay changer
   const handleAudioDelayChange = async (deltaSeconds: number) => {
     const next = Math.round((audioDelay + deltaSeconds) * 10) / 10;
     setAudioDelay(next);
@@ -617,7 +624,6 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
     }
   };
 
-  // Subtitle delay changer
   const handleSubtitleDelayChange = async (deltaSeconds: number) => {
     const next = Math.round((subtitleDelay + deltaSeconds) * 10) / 10;
     setSubtitleDelay(next);
@@ -636,21 +642,26 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
       )
     : null;
 
+  const currentDuration = playbackStatus.duration ?? 0;
+  const currentPos = isScrubbing && scrubPosition !== null ? scrubPosition : (playbackStatus.position ?? 0);
+  const remainingSec = Math.max(0, currentDuration - currentPos);
+  const currentSpeed = playbackStatus.speed ?? 1.0;
+
   return (
     <div
       className={
         isFullscreen
-          ? `player-fullscreen-active fixed inset-0 z-50 h-screen w-screen p-0 m-0 border-0 border-none rounded-none bg-black shadow-none overflow-hidden select-none ${
-              !showOverlay ? 'cursor-none' : 'cursor-default'
+          ? `player-fullscreen-active fixed inset-0 z-50 h-screen w-screen p-0 m-0 border-none bg-black overflow-hidden select-none ${
+              !showOverlay && !isFrameCaptureOpen ? 'cursor-none' : 'cursor-default'
             }`
-          : 'w-full flex-1 min-h-0 h-full flex flex-col p-2 gap-2 overflow-hidden select-none'
+          : 'w-full flex-1 min-h-0 h-full flex flex-col p-2 gap-2 overflow-hidden select-none bg-background'
       }
     >
-      {/* Fullscreen Top Navigation Bar (Revealed with overlay) */}
+      {/* Fullscreen Floating Top Header Bar (Vanishes completely while watching video) */}
       {isFullscreen && (
         <div
-          className={`fullscreen-top-overlay fixed top-0 inset-x-0 h-12 px-6 flex items-center justify-between z-40 bg-gradient-to-b from-black/85 via-black/40 to-transparent transition-all duration-200 ${
-            showOverlay ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-3 pointer-events-none'
+          className={`fixed top-0 inset-x-0 h-14 px-6 flex items-center justify-between z-40 bg-surface/90 backdrop-blur-xl border-b border-border text-foreground transition-all duration-300 ${
+            showOverlay && !isFrameCaptureOpen ? 'opacity-100 translate-y-0 pointer-events-auto' : 'opacity-0 -translate-y-full pointer-events-none'
           }`}
           onClick={(e) => e.stopPropagation()}
           onDoubleClick={(e) => e.stopPropagation()}
@@ -662,12 +673,12 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
           <div className="flex items-center gap-3 min-w-0">
             <button
               type="button"
-              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-semibold backdrop-blur-md border border-white/10 transition cursor-pointer"
+              className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-surface-muted hover:bg-surface-elevated text-foreground border border-border text-xs font-semibold backdrop-blur-md transition cursor-pointer shrink-0"
               onClick={(e) => {
                 e.stopPropagation();
                 onTriggerFullscreenToggle();
               }}
-              title="Exit Fullscreen (Esc or F)"
+              title="Exit Fullscreen (F or Esc)"
               aria-label="Exit Fullscreen"
             >
               <ArrowLeft size={15} />
@@ -675,39 +686,46 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
             </button>
 
             {playbackStatus.currentFile && (
-              <div className="flex items-center gap-2 text-white/90 text-xs font-medium max-w-lg truncate">
-                <Film size={14} className="text-primary shrink-0" />
-                <span className="truncate">
-                  {playbackStatus.currentFile.split(/[/\\]/).pop() || playbackStatus.currentFile}
-                </span>
-                {playbackStatus.videoWidth && playbackStatus.videoHeight && (
-                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/15 text-white/80 shrink-0">
-                    {playbackStatus.videoWidth}x{playbackStatus.videoHeight}
-                  </span>
-                )}
-              </div>
+              <span className="text-sm font-semibold text-foreground truncate max-w-md">
+                {formatCleanTitle(playbackStatus.currentFile)}
+              </span>
             )}
           </div>
 
+          {/* Technical Metadata Capsule Group */}
           <div className="flex items-center gap-2 shrink-0">
+            {playbackStatus.videoWidth && playbackStatus.videoHeight && (
+              <span className="bg-surface-muted text-primary border border-primary/30 rounded-full px-2.5 py-0.5 text-xs font-mono font-medium">
+                {playbackStatus.videoWidth}x{playbackStatus.videoHeight}
+              </span>
+            )}
+            {playbackStatus.fps && playbackStatus.fps > 0 && (
+              <span className="bg-surface-muted text-primary border border-primary/30 rounded-full px-2.5 py-0.5 text-xs font-mono font-medium">
+                {Math.round(playbackStatus.fps)} FPS
+              </span>
+            )}
+            <span className="bg-primary/15 text-primary border border-primary/30 rounded-full px-2.5 py-0.5 text-xs font-bold">
+              {playbackStatus.hwdec && playbackStatus.hwdec !== 'no' ? playbackStatus.hwdec.toUpperCase() : 'HW'}
+            </span>
+
             <button
               type="button"
-              className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white/90 backdrop-blur-md border border-white/10 transition cursor-pointer"
+              className="p-1.5 rounded-full bg-surface-muted hover:bg-surface-elevated text-foreground border border-border transition cursor-pointer ml-1"
               onClick={(e) => {
                 e.stopPropagation();
                 onTriggerFullscreenToggle();
               }}
-              title="Exit Fullscreen (Esc)"
+              title="Exit Fullscreen (F or Esc)"
               aria-label="Exit Fullscreen"
             >
-              <Minimize2 size={16} />
+              <Minimize2 size={15} />
             </button>
           </div>
         </div>
       )}
 
       {!isDesktopBridge && !isFullscreen && (
-        <div className="mb-2 p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-200 text-xs flex items-center gap-2 shrink-0" role="alert">
+        <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-500 text-xs flex items-center gap-2 shrink-0" role="alert">
           <AlertCircle size={16} />
           <span>
             <strong>Browser Preview Mode:</strong> Native Electron desktop bridge is not available. Playback controls require the desktop window.
@@ -715,13 +733,13 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
         </div>
       )}
 
-      {/* Floating Resume Playback Banner: Placed OUTSIDE player-container so native Win32 HWND never occludes it */}
+      {/* Floating Resume Playback Banner */}
       {resumePrompt && (
         <div
           className={
             isFullscreen
-              ? 'fixed top-14 left-1/2 -translate-x-1/2 max-w-xl w-[92%] bg-surface-elevated/95 backdrop-blur-xl border border-border/80 px-5 py-3 rounded-2xl z-50 flex items-center justify-between gap-4 text-foreground shadow-2xl animate-fadeIn'
-              : 'w-full max-w-2xl mx-auto bg-surface-elevated/95 backdrop-blur-xl border border-border/80 px-5 py-3 rounded-2xl z-30 flex items-center justify-between gap-4 text-foreground shadow-xl shrink-0 animate-fadeIn'
+              ? 'fixed top-16 left-1/2 -translate-x-1/2 max-w-xl w-[92%] bg-surface-elevated/95 backdrop-blur-xl border border-border px-5 py-3 rounded-2xl z-50 flex items-center justify-between gap-4 text-foreground shadow-2xl animate-fadeIn'
+              : 'w-full max-w-2xl mx-auto bg-surface-elevated/95 backdrop-blur-xl border border-border px-5 py-3 rounded-2xl z-30 flex items-center justify-between gap-4 text-foreground shadow-xl shrink-0 animate-fadeIn'
           }
           role="dialog"
           aria-modal="true"
@@ -729,7 +747,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
           onDoubleClick={(e) => e.stopPropagation()}
         >
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-8 h-8 rounded-full bg-primary/15 flex items-center justify-center text-primary shrink-0">
+            <div className="w-8 h-8 rounded-full bg-primary-container flex items-center justify-center text-on-primary-container shrink-0">
               <Clock size={16} />
             </div>
             <div className="truncate">
@@ -770,13 +788,11 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
         </div>
       )}
 
-      {/* Native Player Viewing Screen Container */}
+      {/* Native Player Video Screen Container */}
       <div
         className={
           isFullscreen
-            ? `player-container fullscreen-player-container absolute inset-0 w-full h-full bg-black border-0 border-none rounded-none shadow-none overflow-hidden select-none ${
-                !showOverlay ? 'cursor-none' : 'cursor-pointer'
-              }`
+            ? 'player-container fullscreen-player-container absolute inset-0 w-full h-full bg-black overflow-hidden select-none cursor-pointer'
             : 'player-container w-full flex-1 min-h-0 relative select-none bg-black rounded-xl border border-border/60 overflow-hidden shadow-xl cursor-pointer'
         }
         onClick={handleViewportClick}
@@ -785,18 +801,15 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
       >
-        {/* Full-bleed Native Video Viewport: Never resized or squeezed by overlay controls */}
         <div
           id="nosved-video-viewport"
-          className={`player-video-viewport absolute inset-0 w-full h-full flex items-center justify-center bg-black overflow-hidden z-10 ${
-            isFullscreen && !showOverlay ? 'cursor-none' : ''
-          }`}
+          className="player-video-viewport absolute inset-0 w-full h-full flex items-center justify-center bg-black overflow-hidden z-10"
           ref={videoViewportRef}
         >
           {playbackStatus.currentFile && (
             <>
               {playbackStatus.mediaState === 'loading' && (
-                <div className="absolute inset-0 bg-background/85 flex flex-col items-center justify-center gap-3 text-primary text-xs font-semibold z-20">
+                <div className="absolute inset-0 bg-background/90 flex flex-col items-center justify-center gap-3 text-primary text-xs font-semibold z-20">
                   <div className="w-8 h-8 rounded-full border-2 border-primary/20 border-t-primary animate-spin" />
                   <span>Loading Media Stream...</span>
                 </div>
@@ -813,7 +826,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
                   </div>
                   <button
                     type="button"
-                    className="p-1 rounded text-destructive-foreground/80 hover:text-destructive-foreground hover:bg-white/10 transition cursor-pointer border-none bg-transparent"
+                    className="p-1 rounded text-destructive-foreground/80 hover:text-destructive-foreground hover:bg-destructive-foreground/15 transition cursor-pointer border-none bg-transparent"
                     onClick={onDismissError}
                     title="Dismiss error (Esc)"
                     aria-label="Dismiss error"
@@ -830,14 +843,14 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
         {osd && (
           <div className="absolute inset-0 pointer-events-none flex items-center justify-center z-40 animate-fadeIn">
             {osd.type === 'volume' && (
-              <div className="flex flex-col items-center gap-2.5 px-6 py-4 rounded-2xl bg-black/80 backdrop-blur-md border border-white/10 text-white shadow-2xl min-w-[180px]">
+              <div className="flex flex-col items-center gap-2.5 px-6 py-4 rounded-2xl bg-surface-elevated/90 backdrop-blur-md border border-border text-foreground shadow-2xl min-w-[180px]">
                 {Number(osd.value) === 0 ? (
                   <VolumeX size={36} className="text-destructive" />
                 ) : (
                   <Volume2 size={36} className="text-primary" />
                 )}
                 <span className="text-sm font-semibold tracking-wide">Volume {osd.value}%</span>
-                <div className="w-full h-1.5 rounded-full bg-white/20 overflow-hidden">
+                <div className="w-full h-1.5 rounded-full bg-surface-muted overflow-hidden">
                   <div
                     className="h-full bg-primary rounded-full transition-all duration-150"
                     style={{ width: `${osd.value}%` }}
@@ -847,26 +860,24 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
             )}
 
             {osd.type === 'seek' && (
-              <div className="flex flex-col items-center gap-2 px-6 py-4 rounded-2xl bg-black/80 backdrop-blur-md border border-white/10 text-white shadow-2xl">
+              <div className="flex flex-col items-center gap-2 px-6 py-4 rounded-2xl bg-surface-elevated/90 backdrop-blur-md border border-border text-foreground shadow-2xl">
                 <span className="text-primary font-bold text-lg font-mono">{osd.value}</span>
-                {osd.subValue && (
-                  <span className="text-xs font-mono text-white/80">{osd.subValue}</span>
-                )}
+                {osd.subValue && <span className="text-xs font-mono text-muted-foreground">{osd.subValue}</span>}
               </div>
             )}
 
             {(osd.type === 'play' || osd.type === 'pause') && (
-              <div className="w-16 h-16 rounded-full bg-black/80 backdrop-blur-md border border-white/10 text-white shadow-2xl flex items-center justify-center">
+              <div className="w-16 h-16 rounded-full bg-surface-elevated/90 backdrop-blur-md border border-border text-primary shadow-2xl flex items-center justify-center">
                 {osd.type === 'play' ? (
-                  <Play size={32} className="text-primary ml-1" />
+                  <Play size={32} className="ml-1" />
                 ) : (
-                  <Pause size={32} className="text-primary" />
+                  <Pause size={32} />
                 )}
               </div>
             )}
 
             {osd.type === 'mute' && (
-              <div className="flex flex-col items-center gap-2 px-6 py-4 rounded-2xl bg-black/80 backdrop-blur-md border border-white/10 text-white shadow-2xl">
+              <div className="flex flex-col items-center gap-2 px-6 py-4 rounded-2xl bg-surface-elevated/90 backdrop-blur-md border border-border text-foreground shadow-2xl">
                 <VolumeX size={36} className="text-destructive" />
                 <span className="text-xs font-semibold uppercase tracking-wider">{osd.value}</span>
               </div>
@@ -877,7 +888,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
         {/* Double-Tap Gesture Ripples */}
         {osd?.type === 'double_tap_left' && (
           <div className="absolute top-0 bottom-0 left-0 w-1/3 flex items-center justify-center pointer-events-none z-30">
-            <div className="flex flex-col items-center gap-1.5 px-5 py-3.5 rounded-2xl bg-black/60 backdrop-blur-md border border-white/10 text-white shadow-xl">
+            <div className="flex flex-col items-center gap-1.5 px-5 py-3.5 rounded-2xl bg-surface-elevated/80 backdrop-blur-md border border-border text-foreground shadow-xl">
               <RotateCcw size={28} className="text-primary" />
               <span className="text-xs font-mono font-bold">-10s</span>
             </div>
@@ -886,7 +897,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
 
         {osd?.type === 'double_tap_right' && (
           <div className="absolute top-0 bottom-0 right-0 w-1/3 flex items-center justify-center pointer-events-none z-30">
-            <div className="flex flex-col items-center gap-1.5 px-5 py-3.5 rounded-2xl bg-black/60 backdrop-blur-md border border-white/10 text-white shadow-xl">
+            <div className="flex flex-col items-center gap-1.5 px-5 py-3.5 rounded-2xl bg-surface-elevated/80 backdrop-blur-md border border-border text-foreground shadow-xl">
               <RotateCcw size={28} className="text-primary -scale-x-100" />
               <span className="text-xs font-mono font-bold">+10s</span>
             </div>
@@ -894,229 +905,287 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
         )}
       </div>
 
-      {/* Playback Controls: Overlay in fullscreen, separate strip below viewing screen in windowed mode */}
-      <div
-        className={
-          isFullscreen
-            ? `player-controls-overlay ${showOverlay ? 'overlay-show' : 'overlay-hide'}`
-            : 'player-controls-strip'
-        }
-        onClick={(e) => e.stopPropagation()}
-        onDoubleClick={(e) => e.stopPropagation()}
-        onTouchEnd={(e) => e.stopPropagation()}
-        onMouseEnter={onControlsMouseEnter}
-        onMouseLeave={onControlsMouseLeave}
-        onFocus={onControlsFocus}
-        onBlur={onControlsBlur}
-      >
-          {/* Left Controls: Play/Pause, Open File, Playlist Prev/Next, Timestamps */}
-          <div className="flex items-center gap-2 shrink-0">
-            <button
-              type="button"
-              className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-primary text-primary-foreground hover:scale-105 active:scale-95 transition-transform cursor-pointer border-none shadow-md disabled:opacity-40 disabled:cursor-not-allowed"
-              onClick={onTogglePlayPause}
-              disabled={!playbackStatus.currentFile || playbackStatus.mediaState === 'loading'}
-              title={
-                playbackStatus.mediaState === 'ended'
-                  ? 'Replay (Space)'
-                  : playbackStatus.paused
-                  ? 'Play (Space)'
-                  : 'Pause (Space)'
-              }
-              aria-label={
-                playbackStatus.mediaState === 'ended'
-                  ? 'Replay'
-                  : playbackStatus.paused
-                  ? 'Play'
-                  : 'Pause'
-              }
-            >
-              {playbackStatus.mediaState === 'ended' ? (
-                <RotateCcw size={16} />
-              ) : playbackStatus.paused ? (
-                <Play size={16} />
-              ) : (
-                <Pause size={16} />
-              )}
-            </button>
+      {/* Frame Capture Modal / Overlay: completely separate component, only enabled when we want to */}
+      <FrameCaptureModal
+        isOpen={isFrameCaptureOpen}
+        onClose={() => setIsFrameCaptureOpen(false)}
+        playbackStatus={playbackStatus}
+        onFrameStep={onFrameStep}
+        onFrameBackStep={onFrameBackStep}
+        onCaptureFrame={onCaptureFrame}
+        onCommitSeek={onCommitSeek}
+        isFullscreen={isFullscreen}
+      />
 
-            {!isFullscreen && (
-              <button
-                type="button"
-                className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-surface-muted/60 hover:bg-surface-muted text-foreground hover:text-primary transition cursor-pointer border-none"
-                onClick={onOpenFile}
-                title="Open Video File"
-                aria-label="Open Video File"
-              >
-                <FolderOpen size={15} />
-              </button>
-            )}
+      {/* Standard 2-Tier Bottom Control Deck (hidden while Frame Capture is open) */}
+      {!isFrameCaptureOpen && (
+        <div
+          className={
+            isFullscreen
+              ? `fixed bottom-0 inset-x-0 z-40 bg-surface/90 backdrop-blur-xl border-t border-border p-4 shadow-2xl transition-all duration-300 text-foreground ${
+                  showOverlay
+                    ? 'opacity-100 translate-y-0 pointer-events-auto'
+                    : 'opacity-0 translate-y-full pointer-events-none'
+                }`
+              : 'w-full bg-surface/90 backdrop-blur-xl border border-border rounded-2xl p-4 shadow-xl shrink-0 z-30 transition-all text-foreground'
+          }
+          onClick={(e) => e.stopPropagation()}
+          onDoubleClick={(e) => e.stopPropagation()}
+          onTouchEnd={(e) => e.stopPropagation()}
+          onMouseEnter={onControlsMouseEnter}
+          onMouseLeave={onControlsMouseLeave}
+          onFocus={onControlsFocus}
+          onBlur={onControlsBlur}
+        >
+          {/* Standard 2-Tier Bottom Control Deck */}
+          <div className="flex flex-col gap-3 w-full">
+            {/* Tier 1: Balanced Timestamps + M3 Expressive Gapped Scrubber */}
+            <div className="flex items-center gap-4 w-full">
+              {/* Left Timestamp Pill */}
+              <span className="font-mono text-xs text-foreground bg-surface-muted px-3 py-1 rounded-full border border-border shrink-0">
+                {formatTime(currentPos)} / {formatTime(currentDuration)}
+              </span>
 
-            {activePlaylist && (
-              <>
+              {/* M3 Expressive Gapped Scrubber */}
+              <div className="flex-1 min-w-[200px]">
+                <M3GappedScrubber
+                  currentPosition={currentPos}
+                  duration={currentDuration}
+                  isThick={false}
+                  onSeek={(targetSec) => {
+                    onCommitSeek(targetSec);
+                  }}
+                  disabled={!playbackStatus.currentFile || !currentDuration}
+                />
+              </div>
+
+              {/* Right Timestamp & Speed Pill Group */}
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="font-mono text-xs text-foreground bg-surface-muted px-3 py-1 rounded-full border border-border">
+                  -{formatTime(remainingSec)}
+                </span>
                 <button
                   type="button"
-                  className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-surface-muted/60 hover:bg-surface-muted text-foreground hover:text-primary transition cursor-pointer border-none disabled:opacity-30 disabled:cursor-not-allowed"
-                  onClick={onPlayPrevPlaylistItem}
-                  disabled={activePlaylist.currentIndex <= 0}
-                  title="Previous in Playlist"
-                  aria-label="Previous in Playlist"
+                  onClick={handleCycleSpeed}
+                  className="font-mono text-xs text-foreground bg-surface-muted hover:bg-surface-elevated px-2.5 py-1 rounded-full border border-border transition cursor-pointer"
+                  title="Click to cycle speed (0.5x, 1.0x, 1.25x, 1.5x, 2.0x)"
                 >
-                  <SkipBack size={15} />
+                  {currentSpeed.toFixed(currentSpeed % 1 === 0 ? 1 : 2)}x
                 </button>
+              </div>
+            </div>
+
+            {/* Tier 2: 3-Zone Expressive Capsule Controls */}
+            <div className="flex items-center justify-between gap-4 w-full">
+              {/* Left Zone: Utility Capsule */}
+              <div className="bg-surface-elevated border border-border rounded-full p-1 px-1.5 flex items-center gap-1.5 shrink-0 shadow-sm">
                 <button
                   type="button"
-                  className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-surface-muted/60 hover:bg-surface-muted text-foreground hover:text-primary transition cursor-pointer border-none disabled:opacity-30 disabled:cursor-not-allowed"
-                  onClick={onPlayNextPlaylistItem}
-                  disabled={activePlaylist.currentIndex >= activePlaylist.items.length - 1}
-                  title="Next in Playlist"
-                  aria-label="Next in Playlist"
+                  onClick={onOpenFile}
+                  className="p-2 rounded-full hover:bg-surface-muted text-foreground transition cursor-pointer"
+                  title="Open Video File (O)"
                 >
-                  <SkipForward size={15} />
+                  <FolderOpen size={16} />
                 </button>
-                <div
-                  className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-surface-muted/70 text-foreground text-xs font-medium"
-                  title={`Playlist: ${activePlaylist.playlistName}`}
+
+                <button
+                  type="button"
+                  onClick={handleToggleFrameCapture}
+                  className="px-3 py-1.5 rounded-full hover:bg-surface-muted text-foreground hover:text-primary flex items-center gap-1.5 text-xs font-semibold cursor-pointer transition"
+                  title="Frame Capture & Surfer Mode (Ctrl+F)"
                 >
-                  <ListMusic size={13} className="text-primary" />
-                  <span>
-                    {activePlaylist.currentIndex + 1}/{activePlaylist.items.length}
+                  <Camera size={15} className="text-primary" />
+                  <span>Frame Capture</span>
+                  <kbd className="text-[10px] font-mono bg-surface-muted px-1.5 py-0.5 rounded text-muted-foreground border border-border">Ctrl+F</kbd>
+                </button>
+
+                {activePlaylist && (
+                  <div className="flex items-center gap-1 pl-1.5 border-l border-border">
+                    <button
+                      type="button"
+                      className="p-1.5 rounded-full hover:bg-surface-muted text-foreground disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                      onClick={onPlayPrevPlaylistItem}
+                      disabled={activePlaylist.currentIndex <= 0}
+                      title="Previous in Playlist (P)"
+                    >
+                      <SkipBack size={14} />
+                    </button>
+                    <span className="font-mono text-xs text-foreground px-1">
+                      {activePlaylist.currentIndex + 1}/{activePlaylist.items.length}
+                    </span>
+                    <button
+                      type="button"
+                      className="p-1.5 rounded-full hover:bg-surface-muted text-foreground disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                      onClick={onPlayNextPlaylistItem}
+                      disabled={activePlaylist.currentIndex >= activePlaylist.items.length - 1}
+                      title="Next in Playlist (N)"
+                    >
+                      <SkipForward size={14} />
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Center Zone: Transport Dock */}
+              <div className="bg-surface-elevated border border-border rounded-full px-4 py-1.5 flex items-center gap-3 shadow-lg shrink-0">
+                <button
+                  type="button"
+                  onClick={() => onCommitSeek(Math.max(0, (playbackStatus.position ?? 0) - 30))}
+                  className="p-2 rounded-full hover:bg-surface-muted text-foreground transition cursor-pointer"
+                  title="Rewind 30s"
+                >
+                  <SkipBack size={16} />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => onCommitSeek(Math.max(0, (playbackStatus.position ?? 0) - 10))}
+                  className="px-2.5 py-1.5 rounded-full bg-surface-muted hover:bg-surface text-foreground text-xs font-mono font-semibold transition cursor-pointer flex items-center gap-1"
+                  title="Rewind 10s (J)"
+                >
+                  <RotateCcw size={13} />
+                  <span>10s</span>
+                </button>
+
+                {/* Hero Morphing Play/Pause Button */}
+                <button
+                  type="button"
+                  onClick={onTogglePlayPause}
+                  disabled={!playbackStatus.currentFile || playbackStatus.mediaState === 'loading'}
+                  className={`w-11 h-11 bg-primary hover:brightness-105 active:scale-90 text-primary-foreground flex items-center justify-center transition-all duration-200 shadow-md cursor-pointer border-none ${
+                    playbackStatus.paused ? 'rounded-full' : 'rounded-2xl'
+                  }`}
+                  title={playbackStatus.paused ? 'Play (Space)' : 'Pause (Space)'}
+                >
+                  {playbackStatus.mediaState === 'ended' ? (
+                    <RotateCcw size={18} />
+                  ) : playbackStatus.paused ? (
+                    <Play size={18} className="ml-0.5" />
+                  ) : (
+                    <Pause size={18} />
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const max = currentDuration || (playbackStatus.position ?? 0) + 10;
+                    onCommitSeek(Math.min(max, (playbackStatus.position ?? 0) + 10));
+                  }}
+                  className="px-2.5 py-1.5 rounded-full bg-surface-muted hover:bg-surface text-foreground text-xs font-mono font-semibold transition cursor-pointer flex items-center gap-1"
+                  title="Forward 10s (L)"
+                >
+                  <RotateCcw size={13} className="-scale-x-100" />
+                  <span>10s</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const max = currentDuration || (playbackStatus.position ?? 0) + 30;
+                    onCommitSeek(Math.min(max, (playbackStatus.position ?? 0) + 30));
+                  }}
+                  className="p-2 rounded-full hover:bg-surface-muted text-foreground transition cursor-pointer"
+                  title="Forward 30s"
+                >
+                  <SkipForward size={16} />
+                </button>
+              </div>
+
+              {/* Right Zone: Audio, Subtitles, Volume, Fullscreen Capsule */}
+              <div className="bg-surface-elevated border border-border rounded-full px-3.5 py-1.5 flex items-center gap-3 shrink-0 shadow-sm">
+                {/* Volume Slider */}
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={onToggleMute}
+                    className="p-1 rounded-full hover:bg-surface-muted text-foreground transition cursor-pointer"
+                    title={playbackStatus.muted || playbackStatus.volume === 0 ? 'Unmute (M)' : 'Mute (M)'}
+                  >
+                    {playbackStatus.muted || playbackStatus.volume === 0 ? <VolumeX size={15} /> : <Volume2 size={15} />}
+                  </button>
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    step={1}
+                    value={playbackStatus.muted ? 0 : playbackStatus.volume}
+                    onChange={onVolumeChange}
+                    className="w-16 h-1.5 rounded-lg appearance-none bg-surface-muted accent-primary cursor-pointer"
+                    title={`Volume: ${playbackStatus.muted ? 0 : Math.round(playbackStatus.volume)}%`}
+                  />
+                  <span className="font-mono text-[11px] text-foreground w-7 text-right select-none">
+                    {playbackStatus.muted ? '0%' : `${Math.round(playbackStatus.volume)}%`}
                   </span>
                 </div>
-              </>
-            )}
 
-            <div className="flex items-center gap-1 font-mono text-xs text-foreground select-none pl-1">
-              <span>{formatTime(isScrubbing && scrubPosition !== null ? scrubPosition : playbackStatus.position)}</span>
-              <span className="text-muted-foreground/60">/</span>
-              <span className="text-muted-foreground">{formatTime(playbackStatus.duration)}</span>
+                {/* Audio Selector */}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    fetchTracks();
+                    setActiveTab('audio');
+                    setModalOpen(true);
+                  }}
+                  className={`px-2.5 py-1 rounded-full text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer border ${
+                    tracks && tracks.audioTracks.length > 1
+                      ? 'bg-primary-container text-on-primary-container border-primary/30'
+                      : 'bg-surface-muted hover:bg-surface text-foreground border-border'
+                  }`}
+                  title="Audio Tracks (A)"
+                >
+                  <Headphones size={13} />
+                  {selectedAudioTrack?.lang ? (
+                    <span className="uppercase text-[10px] font-mono">{selectedAudioTrack.lang}</span>
+                  ) : (
+                    <span className="text-[10px]">AUD</span>
+                  )}
+                </button>
+
+                {/* Subtitle Selector */}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    fetchTracks();
+                    setActiveTab('subtitles');
+                    setModalOpen(true);
+                  }}
+                  className={`px-2.5 py-1 rounded-full text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer border ${
+                    selectedSubTrack
+                      ? 'bg-primary-container text-on-primary-container border-primary/30'
+                      : 'bg-surface-muted hover:bg-surface text-foreground border-border'
+                  }`}
+                  title="Subtitle Tracks (S)"
+                >
+                  <Subtitles size={13} />
+                  {selectedSubTrack?.lang ? (
+                    <span className="uppercase text-[10px] font-mono">{selectedSubTrack.lang}</span>
+                  ) : (
+                    <span className="text-[10px]">SUB</span>
+                  )}
+                </button>
+
+                {/* Fullscreen Toggle */}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onTriggerFullscreenToggle();
+                  }}
+                  className="p-1.5 rounded-full hover:bg-surface-muted text-foreground transition cursor-pointer"
+                  title={isFullscreen ? 'Exit Fullscreen (F or Esc)' : 'Enter Fullscreen (F)'}
+                >
+                  {isFullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
+                </button>
+              </div>
             </div>
-          </div>
-
-          {/* Center Timeline Scrubber */}
-          <div className="flex-1 min-w-[120px] flex items-center px-2">
-            <input
-              type="range"
-              className="w-full h-1.5 rounded-lg appearance-none bg-surface-muted hover:bg-border transition cursor-pointer accent-primary"
-              min={0}
-              max={playbackStatus.duration && playbackStatus.duration > 0 ? playbackStatus.duration : 100}
-              step={0.1}
-              value={isScrubbing && scrubPosition !== null ? scrubPosition : (playbackStatus.position ?? 0)}
-              onChange={onSeekSliderChange}
-              onMouseDown={onSeekMouseDown}
-              onMouseUp={() => onCommitSeek()}
-              onTouchStart={onSeekMouseDown}
-              onTouchEnd={() => onCommitSeek()}
-              onKeyUp={(e) => {
-                if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
-                  onCommitSeek(parseFloat((e.target as HTMLInputElement).value));
-                }
-              }}
-              disabled={!playbackStatus.currentFile || !playbackStatus.duration || playbackStatus.mediaState === 'loading'}
-              title="Seek timeline (Left/Right Arrow)"
-              aria-label="Seek timeline"
-            />
-          </div>
-
-          {/* Right Controls: Volume, Audio Selector, Subtitle Selector, Status, Fullscreen */}
-          <div className="flex items-center gap-2.5 shrink-0">
-            {/* Volume Control */}
-            <div className="flex items-center gap-1.5">
-              <button
-                type="button"
-                className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-surface-muted/60 hover:bg-surface-muted text-foreground hover:text-primary transition cursor-pointer border-none"
-                onClick={onToggleMute}
-                title={playbackStatus.muted || playbackStatus.volume === 0 ? 'Unmute (M)' : 'Mute (M)'}
-                aria-label={playbackStatus.muted || playbackStatus.volume === 0 ? 'Unmute' : 'Mute'}
-              >
-                {playbackStatus.muted || playbackStatus.volume === 0 ? <VolumeX size={15} /> : <Volume2 size={15} />}
-              </button>
-
-              <input
-                type="range"
-                className="w-16 h-1.5 rounded-lg appearance-none bg-surface-muted hover:bg-border transition cursor-pointer accent-primary"
-                min={0}
-                max={100}
-                step={1}
-                value={playbackStatus.muted ? 0 : playbackStatus.volume}
-                onChange={onVolumeChange}
-                title={`Volume: ${playbackStatus.muted ? 0 : Math.round(playbackStatus.volume)}% (Up/Down Arrow)`}
-                aria-label="Volume slider"
-              />
-
-              <span className="font-mono text-[11px] text-muted-foreground w-7 text-right select-none">
-                {playbackStatus.muted ? '0%' : `${Math.round(playbackStatus.volume)}%`}
-              </span>
-            </div>
-
-            {/* Audio Track Selector Button */}
-            <button
-              type="button"
-              className={`inline-flex items-center gap-1.5 px-2.5 h-8 rounded-lg transition cursor-pointer border-none text-xs font-semibold ${
-                tracks && tracks.audioTracks.length > 1
-                  ? 'bg-primary/20 text-primary hover:bg-primary/30 shadow-sm'
-                  : 'bg-surface-muted/60 hover:bg-surface-muted text-foreground hover:text-primary'
-              }`}
-              onClick={(e) => {
-                e.stopPropagation();
-                fetchTracks();
-                setActiveTab('audio');
-                setModalOpen(true);
-              }}
-              title="Audio Tracks & Sound Settings"
-              aria-label="Select Audio Track"
-            >
-              <Headphones size={15} />
-              {selectedAudioTrack?.lang ? (
-                <span className="uppercase text-[10px] font-mono tracking-wider">{selectedAudioTrack.lang}</span>
-              ) : tracks && tracks.audioTracks.length > 1 ? (
-                <span className="text-[10px] font-mono">{tracks.audioTracks.length}</span>
-              ) : null}
-            </button>
-
-            {/* Subtitle Track Selector Button */}
-            <button
-              type="button"
-              className={`inline-flex items-center gap-1.5 px-2.5 h-8 rounded-lg transition cursor-pointer border-none text-xs font-semibold ${
-                selectedSubTrack
-                  ? 'bg-primary text-primary-foreground shadow-sm'
-                  : 'bg-surface-muted/60 hover:bg-surface-muted text-foreground hover:text-primary'
-              }`}
-              onClick={(e) => {
-                e.stopPropagation();
-                fetchTracks();
-                setActiveTab('subtitles');
-                setModalOpen(true);
-              }}
-              title="Subtitle Selection & Timing"
-              aria-label="Select Subtitle Track"
-            >
-              <Subtitles size={15} />
-              {selectedSubTrack?.lang ? (
-                <span className="uppercase text-[10px] font-mono tracking-wider">{selectedSubTrack.lang}</span>
-              ) : tracks?.subtitlesVisible && tracks?.selectedSubtitleId !== 'no' ? (
-                <span className="text-[10px] uppercase font-mono">ON</span>
-              ) : null}
-            </button>
-
-
-            {/* Fullscreen Toggle Button */}
-            <button
-              type="button"
-              className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-surface-muted/60 hover:bg-surface-muted text-foreground hover:text-primary transition cursor-pointer border-none"
-              onClick={(e) => {
-                e.stopPropagation();
-                onTriggerFullscreenToggle();
-              }}
-              title={isFullscreen ? 'Exit Cinema Fullscreen (F / Esc)' : 'Enter Cinema Fullscreen (F)'}
-              aria-label={isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen'}
-            >
-              {isFullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
-            </button>
           </div>
         </div>
+      )}
 
-      {/* Dedicated Audio & Subtitle Control Modal (Unobstructed, Airspace-Immune) */}
+      {/* Audio & Subtitle Control Modal */}
       {isTrackModalOpen && (
         <div
           className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 animate-fadeIn"
@@ -1132,7 +1201,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
             {/* Modal Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-surface">
               <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-primary/15 flex items-center justify-center text-primary">
+                <div className="w-8 h-8 rounded-xl bg-primary-container flex items-center justify-center text-on-primary-container">
                   {activeTab === 'audio' ? <Headphones size={18} /> : <Subtitles size={18} />}
                 </div>
                 <div>
@@ -1145,7 +1214,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
 
               <button
                 type="button"
-                className="w-8 h-8 rounded-xl bg-surface-muted hover:bg-surface-container text-muted-foreground hover:text-foreground flex items-center justify-center transition border-none cursor-pointer"
+                className="w-8 h-8 rounded-xl bg-surface-muted hover:bg-surface text-foreground flex items-center justify-center transition border-none cursor-pointer"
                 onClick={() => setModalOpen(false)}
                 title="Close (Esc)"
                 aria-label="Close dialog"
@@ -1155,7 +1224,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
             </div>
 
             {/* Modal Tabs */}
-            <div className="flex items-center px-6 pt-4 gap-2 bg-surface-elevated border-b border-border/50">
+            <div className="flex items-center px-6 pt-4 gap-2 bg-surface-elevated border-b border-border">
               <button
                 type="button"
                 className={`flex items-center gap-2 px-4 py-2 rounded-t-xl text-xs font-semibold transition border-none cursor-pointer border-b-2 ${
@@ -1204,7 +1273,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
                               type="button"
                               className={`flex items-center justify-between p-3.5 rounded-2xl cursor-pointer transition border text-left w-full ${
                                 isSelected
-                                  ? 'bg-primary-container/30 border-primary text-foreground shadow-sm'
+                                  ? 'bg-primary-container text-on-primary-container border-primary shadow-sm'
                                   : 'bg-surface border-border hover:bg-surface-muted text-foreground'
                               }`}
                               onClick={() => handleSelectAudioTrack(tr.id)}
@@ -1214,26 +1283,26 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
                                   className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 ${
                                     isSelected
                                       ? 'bg-primary text-primary-foreground shadow'
-                                      : 'border border-muted-foreground/40 text-transparent'
+                                      : 'border border-border text-transparent'
                                   }`}
                                 >
                                   <Check size={13} />
                                 </div>
                                 <div className="flex flex-col truncate">
                                   <div className="flex items-center gap-2">
-                                    <span className="text-xs font-bold text-foreground truncate">
+                                    <span className="text-xs font-bold truncate">
                                       Track {tr.id}: {tr.title || tr.lang || `Audio Stream ${tr.id}`}
                                     </span>
                                     {isSelected && (
-                                      <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-primary/20 text-primary">
+                                      <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-primary text-primary-foreground">
                                         Active
                                       </span>
                                     )}
                                   </div>
-                                  <div className="flex items-center gap-2 mt-0.5 text-[11px] text-muted-foreground font-mono">
+                                  <div className="flex items-center gap-2 mt-0.5 text-[11px] opacity-80 font-mono">
                                     {tr.lang && <span>Language: {tr.lang.toUpperCase()}</span>}
                                     {tr.codec && <span>• Codec: {tr.codec.toUpperCase()}</span>}
-                                    {tr.isDefault && <span className="text-primary">• Default</span>}
+                                    {tr.isDefault && <span className="text-primary font-bold">• Default</span>}
                                   </div>
                                 </div>
                               </div>
@@ -1261,21 +1330,21 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
-                        className="px-2.5 py-1.5 rounded-lg bg-surface-muted hover:bg-surface-container text-foreground text-xs font-semibold transition border-none cursor-pointer"
+                        className="px-2.5 py-1.5 rounded-lg bg-surface-muted hover:bg-surface text-foreground text-xs font-semibold transition border-none cursor-pointer"
                         onClick={() => handleAudioDelayChange(-0.5)}
                       >
                         -0.5s
                       </button>
                       <button
                         type="button"
-                        className="px-2.5 py-1.5 rounded-lg bg-surface-muted hover:bg-surface-container text-foreground text-xs font-semibold transition border-none cursor-pointer"
+                        className="px-2.5 py-1.5 rounded-lg bg-surface-muted hover:bg-surface text-foreground text-xs font-semibold transition border-none cursor-pointer"
                         onClick={() => handleAudioDelayChange(-0.1)}
                       >
                         -0.1s
                       </button>
                       <button
                         type="button"
-                        className="flex-1 py-1.5 rounded-lg bg-surface-muted hover:bg-surface-container text-foreground text-xs font-semibold transition border-none cursor-pointer"
+                        className="flex-1 py-1.5 rounded-lg bg-surface-muted hover:bg-surface text-foreground text-xs font-semibold transition border-none cursor-pointer"
                         onClick={async () => {
                           setAudioDelay(0);
                           if (window.nosvedAPI?.setAudioDelay) {
@@ -1287,14 +1356,14 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
                       </button>
                       <button
                         type="button"
-                        className="px-2.5 py-1.5 rounded-lg bg-surface-muted hover:bg-surface-container text-foreground text-xs font-semibold transition border-none cursor-pointer"
+                        className="px-2.5 py-1.5 rounded-lg bg-surface-muted hover:bg-surface text-foreground text-xs font-semibold transition border-none cursor-pointer"
                         onClick={() => handleAudioDelayChange(0.1)}
                       >
                         +0.1s
                       </button>
                       <button
                         type="button"
-                        className="px-2.5 py-1.5 rounded-lg bg-surface-muted hover:bg-surface-container text-foreground text-xs font-semibold transition border-none cursor-pointer"
+                        className="px-2.5 py-1.5 rounded-lg bg-surface-muted hover:bg-surface text-foreground text-xs font-semibold transition border-none cursor-pointer"
                         onClick={() => handleAudioDelayChange(0.5)}
                       >
                         +0.5s
@@ -1310,9 +1379,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
                   <div className="flex items-center justify-between p-4 bg-surface border border-border rounded-2xl">
                     <div className="flex flex-col gap-0.5">
                       <span className="text-xs font-bold text-foreground">Subtitle Display</span>
-                      <span className="text-[11px] text-muted-foreground">
-                        Show or hide rendered on-screen subtitles
-                      </span>
+                      <span className="text-[11px] text-muted-foreground">Show or hide rendered on-screen subtitles</span>
                     </div>
 
                     <button
@@ -1325,7 +1392,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
                       onClick={() => handleToggleSubtitlesVisible(!tracks?.subtitlesVisible)}
                     >
                       <span
-                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                        className={`inline-block h-4 w-4 transform rounded-full bg-surface shadow-sm transition-transform ${
                           tracks?.subtitlesVisible ? 'translate-x-6' : 'translate-x-1'
                         }`}
                       />
@@ -1344,7 +1411,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
                         type="button"
                         className={`flex items-center justify-between p-3.5 rounded-2xl cursor-pointer transition border text-left w-full ${
                           !tracks?.subtitlesVisible || tracks?.selectedSubtitleId === 'no'
-                            ? 'bg-primary-container/30 border-primary text-foreground shadow-sm'
+                            ? 'bg-primary-container text-on-primary-container border-primary shadow-sm'
                             : 'bg-surface border-border hover:bg-surface-muted text-foreground'
                         }`}
                         onClick={() => handleSelectSubtitleTrack('no')}
@@ -1354,13 +1421,13 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
                             className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 ${
                               !tracks?.subtitlesVisible || tracks?.selectedSubtitleId === 'no'
                                 ? 'bg-primary text-primary-foreground shadow'
-                                : 'border border-muted-foreground/40 text-transparent'
+                                : 'border border-border text-transparent'
                             }`}
                           >
                             <Check size={13} />
                           </div>
                           <div>
-                            <span className="text-xs font-bold text-foreground">Off (Disable Subtitles)</span>
+                            <span className="text-xs font-bold">Off (Disable Subtitles)</span>
                             <p className="text-[11px] text-muted-foreground mt-0.5">Do not render any subtitles</p>
                           </div>
                         </div>
@@ -1378,7 +1445,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
                               type="button"
                               className={`flex items-center justify-between p-3.5 rounded-2xl cursor-pointer transition border text-left w-full ${
                                 isSelected
-                                  ? 'bg-primary-container/30 border-primary text-foreground shadow-sm'
+                                  ? 'bg-primary-container text-on-primary-container border-primary shadow-sm'
                                   : 'bg-surface border-border hover:bg-surface-muted text-foreground'
                               }`}
                               onClick={() => handleSelectSubtitleTrack(tr.id)}
@@ -1388,26 +1455,26 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
                                   className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 ${
                                     isSelected
                                       ? 'bg-primary text-primary-foreground shadow'
-                                      : 'border border-muted-foreground/40 text-transparent'
+                                      : 'border border-border text-transparent'
                                   }`}
                                 >
                                   <Check size={13} />
                                 </div>
                                 <div className="flex flex-col truncate">
                                   <div className="flex items-center gap-2">
-                                    <span className="text-xs font-bold text-foreground truncate">
+                                    <span className="text-xs font-bold truncate">
                                       Track {tr.id}: {tr.title || tr.lang || `Subtitle Stream ${tr.id}`}
                                     </span>
                                     {isSelected && (
-                                      <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-primary/20 text-primary">
+                                      <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-primary text-primary-foreground">
                                         Active
                                       </span>
                                     )}
                                   </div>
-                                  <div className="flex items-center gap-2 mt-0.5 text-[11px] text-muted-foreground font-mono">
+                                  <div className="flex items-center gap-2 mt-0.5 text-[11px] opacity-80 font-mono">
                                     {tr.lang && <span>Language: {tr.lang.toUpperCase()}</span>}
                                     {tr.codec && <span>• Format: {tr.codec.toUpperCase()}</span>}
-                                    {tr.isDefault && <span className="text-primary">• Default</span>}
+                                    {tr.isDefault && <span className="text-primary font-bold">• Default</span>}
                                   </div>
                                 </div>
                               </div>
@@ -1445,21 +1512,21 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
-                        className="px-2.5 py-1.5 rounded-lg bg-surface-muted hover:bg-surface-container text-foreground text-xs font-semibold transition border-none cursor-pointer"
+                        className="px-2.5 py-1.5 rounded-lg bg-surface-muted hover:bg-surface text-foreground text-xs font-semibold transition border-none cursor-pointer"
                         onClick={() => handleSubtitleDelayChange(-0.5)}
                       >
                         -0.5s
                       </button>
                       <button
                         type="button"
-                        className="px-2.5 py-1.5 rounded-lg bg-surface-muted hover:bg-surface-container text-foreground text-xs font-semibold transition border-none cursor-pointer"
+                        className="px-2.5 py-1.5 rounded-lg bg-surface-muted hover:bg-surface text-foreground text-xs font-semibold transition border-none cursor-pointer"
                         onClick={() => handleSubtitleDelayChange(-0.1)}
                       >
                         -0.1s
                       </button>
                       <button
                         type="button"
-                        className="flex-1 py-1.5 rounded-lg bg-surface-muted hover:bg-surface-container text-foreground text-xs font-semibold transition border-none cursor-pointer"
+                        className="flex-1 py-1.5 rounded-lg bg-surface-muted hover:bg-surface text-foreground text-xs font-semibold transition border-none cursor-pointer"
                         onClick={async () => {
                           setSubtitleDelay(0);
                           if (window.nosvedAPI?.setSubtitleDelay) {
@@ -1471,14 +1538,14 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
                       </button>
                       <button
                         type="button"
-                        className="px-2.5 py-1.5 rounded-lg bg-surface-muted hover:bg-surface-container text-foreground text-xs font-semibold transition border-none cursor-pointer"
+                        className="px-2.5 py-1.5 rounded-lg bg-surface-muted hover:bg-surface text-foreground text-xs font-semibold transition border-none cursor-pointer"
                         onClick={() => handleSubtitleDelayChange(0.1)}
                       >
                         +0.1s
                       </button>
                       <button
                         type="button"
-                        className="px-2.5 py-1.5 rounded-lg bg-surface-muted hover:bg-surface-container text-foreground text-xs font-semibold transition border-none cursor-pointer"
+                        className="px-2.5 py-1.5 rounded-lg bg-surface-muted hover:bg-surface text-foreground text-xs font-semibold transition border-none cursor-pointer"
                         onClick={() => handleSubtitleDelayChange(0.5)}
                       >
                         +0.5s

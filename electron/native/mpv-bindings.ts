@@ -26,6 +26,7 @@ export interface MpvFunctions {
   mpv_terminate_destroy: (ctx: unknown) => void;
   mpv_error_string: (error: number) => string;
   mpv_command: (ctx: unknown, args: (string | null)[]) => number;
+  mpv_command_async?: (ctx: unknown, reply_userdata: number | bigint, args: (string | null)[]) => number;
   mpv_set_property_string: (ctx: unknown, name: string, data: string) => number;
   mpv_get_property_string: (ctx: unknown, name: string) => string | null;
   mpv_free: (data: unknown) => void;
@@ -141,7 +142,7 @@ export function getMpvFunctions(customDllPath?: string): MpvFunctions {
 
   try {
     const lib = koffi.load(dllPath);
-    const mpv_handle = koffi.opaque('mpv_handle');
+    koffi.opaque('mpv_handle');
 
     if (!mpvEventStruct) {
       mpvEventStruct = koffi.struct('mpv_event', {
@@ -173,6 +174,7 @@ export function getMpvFunctions(customDllPath?: string): MpvFunctions {
       mpv_terminate_destroy: lib.func('void mpv_terminate_destroy(mpv_handle *ctx)'),
       mpv_error_string: lib.func('const char *mpv_error_string(int error)'),
       mpv_command: lib.func('int mpv_command(mpv_handle *ctx, const char **args)'),
+      mpv_command_async: lib.func('int mpv_command_async(mpv_handle *ctx, uint64_t reply_userdata, const char **args)'),
       mpv_set_property_string: lib.func('int mpv_set_property_string(mpv_handle *ctx, const char *name, const char *data)'),
       mpv_get_property_string: lib.func('char *mpv_get_property_string(mpv_handle *ctx, const char *name)'),
       mpv_free: lib.func('void mpv_free(void *data)'),
@@ -198,7 +200,7 @@ export function getMpvFunctions(customDllPath?: string): MpvFunctions {
 export function decodeMpvEvent(evPtr: unknown): MpvEventDecoded | null {
   if (!evPtr || !mpvEventStruct) return null;
   try {
-    return (koffi.decode(evPtr, mpvEventStruct) as MpvEventDecoded) ?? null;
+    return (koffi.decode(evPtr, mpvEventStruct as any) as MpvEventDecoded) ?? null;
   } catch {
     return null;
   }
@@ -210,7 +212,7 @@ export function decodeMpvEvent(evPtr: unknown): MpvEventDecoded | null {
 export function decodeMpvEndFileEvent(dataPtr: unknown): MpvEventEndFileDecoded | null {
   if (!dataPtr || !mpvEventEndFileStruct) return null;
   try {
-    return (koffi.decode(dataPtr, mpvEventEndFileStruct) as MpvEventEndFileDecoded) ?? null;
+    return (koffi.decode(dataPtr, mpvEventEndFileStruct as any) as MpvEventEndFileDecoded) ?? null;
   } catch {
     return null;
   }
@@ -236,7 +238,7 @@ export function registerMpvWakeupCallback(callback: () => void): { pointer: unkn
   }
   const cb = koffi.register(() => {
     callback();
-  }, koffi.pointer(wakeupCallbackProto));
+  }, koffi.pointer(wakeupCallbackProto as any));
 
   return {
     pointer: cb,

@@ -1,5 +1,6 @@
 import path from 'node:path';
 import fs from 'node:fs';
+import { app } from 'electron';
 import {
   getMpvFunctions,
   MpvFunctions,
@@ -47,6 +48,9 @@ export interface PlaybackStatus {
   muted: boolean;
   videoWidth?: number | null;
   videoHeight?: number | null;
+  fps?: number | null;
+  hwdec?: string | null;
+  speed?: number;
   error?: string;
 }
 
@@ -468,6 +472,29 @@ export class NativePlayerService {
     if (muteStr !== null) {
       this.playbackStatus.muted = muteStr === 'yes';
     }
+
+    const fpsStr = safeGetMpvPropertyString(this.funcs, this.handle, 'container-fps');
+    if (fpsStr !== null) {
+      const parsedFps = parseFloat(fpsStr);
+      this.playbackStatus.fps = Number.isFinite(parsedFps) && parsedFps > 0 ? Math.round(parsedFps * 100) / 100 : null;
+    }
+    if (!this.playbackStatus.fps) {
+      const vfFpsStr = safeGetMpvPropertyString(this.funcs, this.handle, 'estimated-vf-fps');
+      if (vfFpsStr !== null) {
+        const parsedVfFps = parseFloat(vfFpsStr);
+        this.playbackStatus.fps = Number.isFinite(parsedVfFps) && parsedVfFps > 0 ? Math.round(parsedVfFps * 100) / 100 : 24;
+      }
+    }
+
+    const hwdecCurrentStr = safeGetMpvPropertyString(this.funcs, this.handle, 'hwdec-current');
+    const hwdecStr = safeGetMpvPropertyString(this.funcs, this.handle, 'hwdec');
+    this.playbackStatus.hwdec = (hwdecCurrentStr && hwdecCurrentStr !== 'no') ? hwdecCurrentStr : ((hwdecStr && hwdecStr !== 'no') ? hwdecStr : null);
+
+    const speedStr = safeGetMpvPropertyString(this.funcs, this.handle, 'speed');
+    if (speedStr !== null) {
+      const parsedSpeed = parseFloat(speedStr);
+      this.playbackStatus.speed = Number.isFinite(parsedSpeed) ? parsedSpeed : 1.0;
+    }
     console.log('[refreshStateFromNative] done refreshing!');
   }
 
@@ -686,6 +713,95 @@ export class NativePlayerService {
 
   public async toggleMute(): Promise<PlaybackStatus> {
     return this.setMuted(!this.playbackStatus.muted);
+  }
+
+  public frameStep(): void {
+    if (!this.handle || !this.funcs) return;
+    try {
+      if (this.funcs.mpv_command_async) {
+        this.funcs.mpv_command_async(this.handle, 0n, ['frame-step', null]);
+      } else {
+        this.funcs.mpv_command(this.handle, ['frame-step', null]);
+      }
+      this.playbackStatus.paused = true;
+      this.playbackStatus.mediaState = 'paused';
+      this.refreshStateFromNative();
+      this.notifyPlaybackChange();
+    } catch (err) {
+      console.error('[NativePlayerService] frameStep failed:', err);
+    }
+  }
+
+  public frameBackStep(): void {
+    if (!this.handle || !this.funcs) return;
+    try {
+      if (this.funcs.mpv_command_async) {
+        this.funcs.mpv_command_async(this.handle, 0n, ['frame-back-step', null]);
+      } else {
+        this.funcs.mpv_command(this.handle, ['frame-back-step', null]);
+      }
+      this.playbackStatus.paused = true;
+      this.playbackStatus.mediaState = 'paused';
+      this.refreshStateFromNative();
+      this.notifyPlaybackChange();
+    } catch (err) {
+      console.error('[NativePlayerService] frameBackStep failed:', err);
+    }
+  }
+
+  public async captureFrame(customDir?: string): Promise<{ success: boolean; filePath?: string; frameNumber?: number; error?: string }> {
+    if (!this.handle || !this.funcs) {
+      return { success: false, error: 'Cannot capture frame: Native player is not initialized' };
+    }
+    if (!this.playbackStatus.currentFile) {
+      return { success: false, error: 'Cannot capture frame: No video file loaded' };
+    }
+
+    try {
+      const saveDir = customDir || path.join(app.getPath('pictures'), 'Nosved Player');
+      if (!fs.existsSync(saveDir)) {
+        fs.mkdirSync(saveDir, { recursive: true });
+      }
+
+      const videoName = path.basename(this.playbackStatus.currentFile, path.extname(this.playbackStatus.currentFile))
+        .replace(/[^a-zA-Z0-9_\-]/g, '_');
+      const pos = this.playbackStatus.position ?? 0;
+      const fps = this.playbackStatus.fps || 24;
+      const frameNumber = Math.max(0, Math.round(pos * fps));
+      const timestamp = Date.now();
+      const fileName = `${videoName}_F${frameNumber}_${timestamp}.png`;
+      const outputPath = path.join(saveDir, fileName);
+
+      const code = this.funcs.mpv_command(this.handle, ['screenshot-to-file', outputPath, 'video', null]);
+      if (code < 0) {
+        const errStr = this.funcs.mpv_error_string(code) || 'Screenshot failed';
+        return { success: false, error: errStr };
+      }
+
+      return {
+        success: true,
+        filePath: outputPath,
+        frameNumber,
+      };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { success: false, error: msg };
+    }
+  }
+
+  public async setSpeed(speed: number): Promise<PlaybackStatus> {
+    if (!this.handle || !this.funcs) {
+      throw new Error('Cannot set speed: Native player is not initialized');
+    }
+    const target = Math.max(0.1, Math.min(10.0, speed));
+    const code = this.funcs.mpv_set_property_string(this.handle, 'speed', String(target));
+    if (code < 0) {
+      const errStr = this.funcs.mpv_error_string(code);
+      throw new Error(`Failed to set speed: ${errStr}`);
+    }
+    this.playbackStatus.speed = target;
+    this.notifyPlaybackChange();
+    return this.getPlaybackStatus();
   }
 
   // Track Management

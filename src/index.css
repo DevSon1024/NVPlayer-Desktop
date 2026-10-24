@@ -516,9 +516,7 @@ html.compact-ui {
   height: 64px;
   background: linear-gradient(
     to top,
-    rgba(5, 7, 10, 0.98) 0%,
-    rgba(5, 7, 10, 0.85) 50%,
-    rgba(5, 7, 10, 0.35) 85%,
+    var(--md-sys-color-surface) 0%,
     transparent 100%
   );
   border-top: none;
@@ -552,8 +550,7 @@ html.compact-ui {
   height: 48px;
   background: linear-gradient(
     to bottom,
-    rgba(5, 7, 10, 0.92) 0%,
-    rgba(5, 7, 10, 0.6) 60%,
+    var(--md-sys-color-surface) 0%,
     transparent 100%
   );
   display: flex;

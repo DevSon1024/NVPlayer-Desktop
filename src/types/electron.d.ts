@@ -8,6 +8,9 @@ export interface PlaybackStatus {
   muted: boolean;
   videoWidth?: number | null;
   videoHeight?: number | null;
+  fps?: number | null;
+  hwdec?: string | null;
+  speed?: number;
   error?: string;
 }
 
@@ -140,6 +143,11 @@ export interface NosvedAPI {
   setVideoBounds: (bounds: { x: number; y: number; width: number; height: number; visible?: boolean }) => Promise<{ success: boolean }>;
   getPlaybackStatus: () => Promise<PlaybackStatus>;
   onPlaybackStatus: (callback: (status: PlaybackStatus) => void) => () => void;
+  frameStep: () => Promise<PlaybackStatus>;
+  frameBackStep: () => Promise<PlaybackStatus>;
+  captureFrame: (customDir?: string) => Promise<{ success: boolean; filePath?: string; frameNumber?: number; error?: string }>;
+  setSpeed: (speed: number) => Promise<PlaybackStatus>;
+  showItemInFolder: (filePath: string) => Promise<void>;
 
   // Audio & Subtitle Track APIs
   getTracks: () => Promise<PlayerTracksSnapshot>;

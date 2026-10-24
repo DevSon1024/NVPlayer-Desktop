@@ -167,6 +167,10 @@ export class NativeVideoWindow {
     return this.childHwnd;
   }
 
+  public getParentHwnd(): bigint | number | null {
+    return this.parentHwnd;
+  }
+
   public isValid(): boolean {
     if (!this.childHwnd || !this.user32) return false;
     try {

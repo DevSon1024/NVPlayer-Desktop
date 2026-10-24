@@ -132,31 +132,49 @@ export function useFullscreen({
     };
   }, [videoViewportEl, updateVideoBounds]);
 
-  // Fullscreen auto-hide timer management (5-second timeout on inactivity during active playback)
+  // Fullscreen auto-hide timer management (2.5-second timeout on inactivity during active playback)
   const resetInactivityTimer = useCallback(() => {
     if (inactivityTimerRef.current) {
       clearTimeout(inactivityTimerRef.current);
       inactivityTimerRef.current = null;
     }
-    setShowOverlay(true);
 
     if (isPlayerFullscreenRef.current) {
       const status = playbackStatusRef.current;
       // Keep controls visible when paused or when ended
       if (status.paused || status.mediaState === 'paused' || status.mediaState === 'ended') {
+        setShowOverlay(true);
         return;
       }
+      setShowOverlay(true);
       inactivityTimerRef.current = setTimeout(() => {
         if (!isScrubbingRef.current && !isInteractingWithControlsRef.current && !isControlsFocusedRef.current) {
           setShowOverlay(false);
         }
-      }, 5000);
+      }, 2500);
+    } else {
+      setShowOverlay(true);
     }
   }, []);
 
+  const prevPausedRef = useRef(playbackStatus.paused);
   useEffect(() => {
+    const wasPaused = prevPausedRef.current;
+    prevPausedRef.current = playbackStatus.paused;
+
     if (isPlayerFullscreen) {
-      resetInactivityTimer();
+      const isPlaying = !playbackStatus.paused && playbackStatus.mediaState !== 'paused' && playbackStatus.mediaState !== 'ended';
+      if (isPlaying && wasPaused) {
+        // Hide controls immediately on active playback resume
+        if (inactivityTimerRef.current) {
+          clearTimeout(inactivityTimerRef.current);
+          inactivityTimerRef.current = null;
+        }
+        setShowOverlay(false);
+      } else if (!isPlaying) {
+        // Keep controls visible when paused
+        setShowOverlay(true);
+      }
     } else {
       if (inactivityTimerRef.current) {
         clearTimeout(inactivityTimerRef.current);
@@ -178,7 +196,16 @@ export function useFullscreen({
     setIsPlayerFullscreen(next);
     if (next) {
       setActiveTab('player');
-      setShowOverlay(true);
+      // When entering fullscreen while video is playing, show zero controls
+      const isPlaying =
+        !playbackStatusRef.current.paused &&
+        playbackStatusRef.current.mediaState !== 'paused' &&
+        playbackStatusRef.current.mediaState !== 'ended';
+      setShowOverlay(!isPlaying);
+      if (inactivityTimerRef.current) {
+        clearTimeout(inactivityTimerRef.current);
+        inactivityTimerRef.current = null;
+      }
       if (window.nosvedAPI?.setFullscreen) {
         await window.nosvedAPI.setFullscreen(true).catch(console.error);
       }

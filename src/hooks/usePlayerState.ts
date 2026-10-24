@@ -224,6 +224,46 @@ export function usePlayerState({ resumePlaybackPrompt, onNavigateToPlayer }: Use
     }
   }, []);
 
+  const handleFrameStep = useCallback(async () => {
+    if (!window.nosvedAPI?.frameStep) return;
+    try {
+      const res = await window.nosvedAPI.frameStep();
+      setPlaybackStatus(res);
+    } catch (err) {
+      console.error('Failed to frame step:', err);
+    }
+  }, []);
+
+  const handleFrameBackStep = useCallback(async () => {
+    if (!window.nosvedAPI?.frameBackStep) return;
+    try {
+      const res = await window.nosvedAPI.frameBackStep();
+      setPlaybackStatus(res);
+    } catch (err) {
+      console.error('Failed to frame back step:', err);
+    }
+  }, []);
+
+  const handleCaptureFrame = useCallback(async (customDir?: string) => {
+    if (!window.nosvedAPI?.captureFrame) return { success: false, error: 'API not available' };
+    try {
+      return await window.nosvedAPI.captureFrame(customDir);
+    } catch (err) {
+      console.error('Failed to capture frame:', err);
+      return { success: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  }, []);
+
+  const handleSetSpeed = useCallback(async (speed: number) => {
+    if (!window.nosvedAPI?.setSpeed) return;
+    try {
+      const res = await window.nosvedAPI.setSpeed(speed);
+      setPlaybackStatus(res);
+    } catch (err) {
+      console.error('Failed to set speed:', err);
+    }
+  }, []);
+
   return {
     playerStatus,
     playbackStatus,
@@ -245,5 +285,9 @@ export function usePlayerState({ resumePlaybackPrompt, onNavigateToPlayer }: Use
     handleVolume,
     handleToggleMute,
     handleDismissError,
+    handleFrameStep,
+    handleFrameBackStep,
+    handleCaptureFrame,
+    handleSetSpeed,
   };
 }

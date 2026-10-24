@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Film, ArrowLeft } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 import { Navbar, TabType } from './components/Navbar';
 import { PlayerView } from './components/PlayerView';
 import { HomeView } from './components/HomeView';
@@ -36,7 +36,6 @@ export const App: React.FC = () => {
   };
 
   const {
-    appInfo,
     nativePoc,
     settings,
     systemAccentColor,
@@ -77,6 +76,10 @@ export const App: React.FC = () => {
     handleVolume,
     handleToggleMute,
     handleDismissError,
+    handleFrameStep,
+    handleFrameBackStep,
+    handleCaptureFrame,
+    handleSetSpeed,
   } = usePlayerState({
     resumePlaybackPrompt: settings.resumePlaybackPrompt,
     onNavigateToPlayer: () => {
@@ -180,7 +183,7 @@ export const App: React.FC = () => {
           setIsPlayerFullscreen(false);
         }
         handleToggleAppFullscreen();
-      } else if (e.code === FULLSCREEN_SHORTCUT_KEY) {
+      } else if (e.code === FULLSCREEN_SHORTCUT_KEY && !e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey) {
         if (activeTab === 'player' || isPlayerFullscreen || Boolean(playbackStatus.currentFile && playbackStatus.mediaState !== 'idle')) {
           e.preventDefault();
           triggerPlayerFullscreenToggle();
@@ -211,55 +214,57 @@ export const App: React.FC = () => {
           window.nosvedAPI?.setFullscreen?.(false);
         }
       } else if (e.code === 'Space' || e.code === 'KeyK') {
-        if (activeTab === 'player' || isPlayerFullscreen) {
+        if (activeTab !== 'player' && !isPlayerFullscreen && playbackStatus.currentFile) {
           e.preventDefault();
           handleTogglePlayPause();
         }
       } else if (e.code === 'KeyJ') {
-        if (activeTab === 'player' || isPlayerFullscreen) {
+        if (activeTab !== 'player' && !isPlayerFullscreen && playbackStatus.currentFile && playbackStatus.position !== null) {
           e.preventDefault();
-          if (playbackStatus.currentFile && playbackStatus.position !== null) {
-            const step = settings.seekStepSeconds || 10;
-            const newPos = Math.max(0, playbackStatus.position - step);
-            window.nosvedAPI?.seek(newPos).then(setPlaybackStatus).catch(console.error);
-          }
+          const step = settings.seekStepSeconds || 10;
+          const newPos = Math.max(0, playbackStatus.position - step);
+          window.nosvedAPI?.seek(newPos).then(setPlaybackStatus).catch(console.error);
         }
       } else if (e.code === 'KeyL') {
-        if (activeTab === 'player' || isPlayerFullscreen) {
+        if (activeTab !== 'player' && !isPlayerFullscreen && playbackStatus.currentFile && playbackStatus.position !== null) {
           e.preventDefault();
-          if (playbackStatus.currentFile && playbackStatus.position !== null) {
-            const step = settings.seekStepSeconds || 10;
-            const max = playbackStatus.duration ?? playbackStatus.position + step;
-            const newPos = Math.min(max, playbackStatus.position + step);
-            window.nosvedAPI?.seek(newPos).then(setPlaybackStatus).catch(console.error);
-          }
+          const step = settings.seekStepSeconds || 10;
+          const max = playbackStatus.duration ?? playbackStatus.position + step;
+          const newPos = Math.min(max, playbackStatus.position + step);
+          window.nosvedAPI?.seek(newPos).then(setPlaybackStatus).catch(console.error);
         }
       } else if (e.code === 'ArrowLeft') {
-        e.preventDefault();
-        if (playbackStatus.currentFile && playbackStatus.position !== null) {
+        if (activeTab !== 'player' && !isPlayerFullscreen && playbackStatus.currentFile && playbackStatus.position !== null) {
+          e.preventDefault();
           const step = settings.seekStepSeconds || 10;
           const newPos = Math.max(0, playbackStatus.position - step);
           window.nosvedAPI?.seek(newPos).then(setPlaybackStatus).catch(console.error);
         }
       } else if (e.code === 'ArrowRight') {
-        e.preventDefault();
-        if (playbackStatus.currentFile && playbackStatus.position !== null) {
+        if (activeTab !== 'player' && !isPlayerFullscreen && playbackStatus.currentFile && playbackStatus.position !== null) {
+          e.preventDefault();
           const step = settings.seekStepSeconds || 10;
           const max = playbackStatus.duration ?? playbackStatus.position + step;
           const newPos = Math.min(max, playbackStatus.position + step);
           window.nosvedAPI?.seek(newPos).then(setPlaybackStatus).catch(console.error);
         }
       } else if (e.code === 'ArrowUp') {
-        e.preventDefault();
-        const newVol = Math.min(100, Math.round(playbackStatus.volume + 5));
-        window.nosvedAPI?.setVolume(newVol).then(setPlaybackStatus).catch(console.error);
+        if (activeTab !== 'player' && !isPlayerFullscreen) {
+          e.preventDefault();
+          const newVol = Math.min(100, Math.round(playbackStatus.volume + 5));
+          window.nosvedAPI?.setVolume(newVol).then(setPlaybackStatus).catch(console.error);
+        }
       } else if (e.code === 'ArrowDown') {
-        e.preventDefault();
-        const newVol = Math.max(0, Math.round(playbackStatus.volume - 5));
-        window.nosvedAPI?.setVolume(newVol).then(setPlaybackStatus).catch(console.error);
+        if (activeTab !== 'player' && !isPlayerFullscreen) {
+          e.preventDefault();
+          const newVol = Math.max(0, Math.round(playbackStatus.volume - 5));
+          window.nosvedAPI?.setVolume(newVol).then(setPlaybackStatus).catch(console.error);
+        }
       } else if (e.key === 'm' || e.key === 'M') {
-        e.preventDefault();
-        handleToggleMute();
+        if (activeTab !== 'player' && !isPlayerFullscreen) {
+          e.preventDefault();
+          handleToggleMute();
+        }
       }
     };
 
@@ -315,46 +320,40 @@ export const App: React.FC = () => {
       <main className={`flex-1 flex flex-col h-full overflow-hidden bg-background main-viewport ${isPlayerFullscreen ? 'player-fullscreen-mode bg-black border-none' : ''}`}>
         {/* Viewport Top Header: Only shown on Now Playing screen; hidden on all dashboard workspaces */}
         {!isPlayerFullscreen && activeTab === 'player' && (
-          <header className="flex items-center justify-between border-b border-border bg-surface/70 backdrop-blur-md sticky top-0 z-10 viewport-header h-11 min-h-11 px-5 transition-all">
-            <div className="flex items-center gap-3">
+          <header className="flex items-center justify-between border-b border-border bg-surface/85 backdrop-blur-xl sticky top-0 z-10 viewport-header h-12 min-h-12 px-5 transition-all text-foreground">
+            <div className="flex items-center gap-3 min-w-0">
               <button
                 type="button"
                 onClick={() => setActiveTab(previousTab || 'home')}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-surface-muted hover:bg-surface-elevated hover:text-primary text-foreground text-xs font-semibold border border-border transition-colors cursor-pointer"
+                className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-surface-muted hover:bg-surface-elevated text-foreground border border-border text-xs font-semibold transition-colors cursor-pointer shrink-0"
                 title="Back to previous screen (Backspace)"
               >
                 <ArrowLeft size={15} />
                 <span>Back</span>
               </button>
-              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/25">
-                <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399]" />
-                <span>Desktop Engine Ready</span>
-              </div>
+              {playbackStatus.currentFile && (
+                <span className="text-sm font-semibold text-foreground truncate max-w-md">
+                  {(playbackStatus.currentFile.split(/[/\\]/).pop() || playbackStatus.currentFile)
+                    .replace(/\.[^/.]+$/, '')
+                    .replace(/[._]/g, ' ')}
+                </span>
+              )}
             </div>
 
-            {playbackStatus.currentFile && (
-              <div
-                className="flex items-center gap-2 px-3 py-1 bg-surface-muted/70 border border-border/80 rounded-full text-foreground text-xs max-w-[520px] shadow-sm"
-                title={playbackStatus.currentFile}
-              >
-                <Film size={13} className="text-primary shrink-0" />
-                <span className="max-w-[360px] truncate font-medium">
-                  {playbackStatus.currentFile.split(/[/\\]/).pop() || playbackStatus.currentFile}
+            {/* Technical Metadata Capsule Row */}
+            <div className="flex items-center gap-2 shrink-0">
+              {playbackStatus.videoWidth && playbackStatus.videoHeight && (
+                <span className="bg-surface-muted text-primary border border-primary/30 rounded-full px-2.5 py-0.5 text-xs font-mono font-medium">
+                  {playbackStatus.videoWidth}x{playbackStatus.videoHeight}
                 </span>
-                {playbackStatus.videoWidth && playbackStatus.videoHeight && (
-                  <span className="font-mono text-[10px] font-semibold px-1.5 py-0.2 bg-primary/15 border border-primary/30 rounded text-primary shrink-0">
-                    {playbackStatus.videoWidth}x{playbackStatus.videoHeight}
-                  </span>
-                )}
-              </div>
-            )}
-
-            <div className="flex items-center gap-2">
-              <span className="font-mono text-[10px] text-muted-foreground bg-surface-elevated px-2 py-0.5 rounded border border-border">
-                {appInfo ? `${appInfo.platform}-${appInfo.arch}` : 'win32-x64'}
-              </span>
-              <span className="font-mono text-[10px] text-primary bg-surface-elevated px-2 py-0.5 rounded border border-border">
-                v{appInfo?.version || '0.1.0'}
+              )}
+              {playbackStatus.fps && playbackStatus.fps > 0 && (
+                <span className="bg-surface-muted text-primary border border-primary/30 rounded-full px-2.5 py-0.5 text-xs font-mono font-medium">
+                  {Math.round(playbackStatus.fps)} FPS
+                </span>
+              )}
+              <span className="bg-primary/15 text-primary border border-primary/30 rounded-full px-2.5 py-0.5 text-xs font-bold">
+                {playbackStatus.hwdec && playbackStatus.hwdec !== 'no' ? playbackStatus.hwdec.toUpperCase() : 'HW'}
               </span>
             </div>
           </header>
@@ -413,6 +412,10 @@ export const App: React.FC = () => {
               onControlsMouseLeave={handleControlsMouseLeave}
               onControlsFocus={handleControlsFocus}
               onControlsBlur={handleControlsBlur}
+              onFrameStep={handleFrameStep}
+              onFrameBackStep={handleFrameBackStep}
+              onCaptureFrame={handleCaptureFrame}
+              onSetSpeed={handleSetSpeed}
             />
           )}
 
