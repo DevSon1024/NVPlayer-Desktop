@@ -210,10 +210,29 @@ export const App: React.FC = () => {
           e.preventDefault();
           window.nosvedAPI?.setFullscreen?.(false);
         }
-      } else if (e.code === 'Space') {
+      } else if (e.code === 'Space' || e.code === 'KeyK') {
         if (activeTab === 'player' || isPlayerFullscreen) {
           e.preventDefault();
           handleTogglePlayPause();
+        }
+      } else if (e.code === 'KeyJ') {
+        if (activeTab === 'player' || isPlayerFullscreen) {
+          e.preventDefault();
+          if (playbackStatus.currentFile && playbackStatus.position !== null) {
+            const step = settings.seekStepSeconds || 10;
+            const newPos = Math.max(0, playbackStatus.position - step);
+            window.nosvedAPI?.seek(newPos).then(setPlaybackStatus).catch(console.error);
+          }
+        }
+      } else if (e.code === 'KeyL') {
+        if (activeTab === 'player' || isPlayerFullscreen) {
+          e.preventDefault();
+          if (playbackStatus.currentFile && playbackStatus.position !== null) {
+            const step = settings.seekStepSeconds || 10;
+            const max = playbackStatus.duration ?? playbackStatus.position + step;
+            const newPos = Math.min(max, playbackStatus.position + step);
+            window.nosvedAPI?.seek(newPos).then(setPlaybackStatus).catch(console.error);
+          }
         }
       } else if (e.code === 'ArrowLeft') {
         e.preventDefault();

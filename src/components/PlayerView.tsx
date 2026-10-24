@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Play,
   Pause,
@@ -124,6 +124,176 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
   const [audioDelay, setAudioDelay] = useState(0);
   const [subtitleDelay, setSubtitleDelay] = useState(0);
 
+  // On-Screen Display (OSD) HUD State & Trigger
+  interface OsdState {
+    type: 'volume' | 'seek' | 'play' | 'pause' | 'mute' | 'double_tap_left' | 'double_tap_right';
+    value?: string | number;
+    subValue?: string;
+  }
+  const [osd, setOsd] = useState<OsdState | null>(null);
+  const osdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const triggerOsd = useCallback((state: OsdState, durationMs = 1000) => {
+    if (osdTimerRef.current) clearTimeout(osdTimerRef.current);
+    setOsd(state);
+    osdTimerRef.current = setTimeout(() => {
+      setOsd(null);
+    }, durationMs);
+  }, []);
+
+  // Viewport Mouse Wheel Gesture: Vertical -> Volume, Horizontal / Shift+Wheel -> Seek
+  const handleViewportWheel = useCallback(
+    (e: React.WheelEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      if (!playbackStatus.currentFile) return;
+
+      if (Math.abs(e.deltaX) > Math.abs(e.deltaY) || e.shiftKey) {
+        // Horizontal scroll: Seek
+        const delta = e.shiftKey ? e.deltaY : e.deltaX;
+        const step = delta > 0 ? 5 : -5;
+        const currentPos = playbackStatus.position ?? 0;
+        const maxPos = playbackStatus.duration ?? currentPos + 10;
+        const targetPos = Math.max(0, Math.min(maxPos, currentPos + step));
+        onCommitSeek(targetPos);
+        triggerOsd({
+          type: 'seek',
+          value: step > 0 ? '+5s' : '-5s',
+          subValue: formatTime(targetPos),
+        });
+      } else {
+        // Vertical scroll: Volume
+        const step = e.deltaY < 0 ? 5 : -5;
+        const newVol = Math.max(0, Math.min(100, Math.round(playbackStatus.volume + step)));
+        if (window.nosvedAPI?.setVolume) {
+          window.nosvedAPI.setVolume(newVol).catch(console.error);
+        }
+        triggerOsd({
+          type: 'volume',
+          value: newVol,
+        });
+      }
+    },
+    [playbackStatus.currentFile, playbackStatus.position, playbackStatus.duration, playbackStatus.volume, onCommitSeek, triggerOsd]
+  );
+
+  // Viewport Pointer Drag Gesture (Swipe to seek horizontally, drag vertically for volume)
+  const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dragStartRef = useRef<{ x: number; y: number; initialPos: number; initialVol: number } | null>(null);
+  const [isPointerDragging, setIsPointerDragging] = useState(false);
+
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    dragStartRef.current = {
+      x: e.clientX,
+      y: e.clientY,
+      initialPos: playbackStatus.position ?? 0,
+      initialVol: playbackStatus.volume,
+    };
+  };
+
+  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragStartRef.current) return;
+    const deltaX = e.clientX - dragStartRef.current.x;
+    const deltaY = dragStartRef.current.y - e.clientY;
+
+    if (!isPointerDragging && (Math.abs(deltaX) > 18 || Math.abs(deltaY) > 18)) {
+      setIsPointerDragging(true);
+      if (clickTimerRef.current) {
+        clearTimeout(clickTimerRef.current);
+        clickTimerRef.current = null;
+      }
+    }
+
+    if (isPointerDragging) {
+      if (Math.abs(deltaX) > Math.abs(deltaY)) {
+        const rect = e.currentTarget.getBoundingClientRect();
+        const duration = playbackStatus.duration || 100;
+        const seekOffset = (deltaX / rect.width) * Math.min(120, duration * 0.25);
+        const targetPos = Math.max(0, Math.min(duration, dragStartRef.current.initialPos + seekOffset));
+        triggerOsd(
+          {
+            type: 'seek',
+            value: `${seekOffset > 0 ? '+' : ''}${Math.round(seekOffset)}s`,
+            subValue: formatTime(targetPos),
+          },
+          500
+        );
+      } else {
+        const volOffset = Math.round((deltaY / 180) * 100);
+        const newVol = Math.max(0, Math.min(100, dragStartRef.current.initialVol + volOffset));
+        if (window.nosvedAPI?.setVolume) {
+          window.nosvedAPI.setVolume(newVol).catch(console.error);
+        }
+        triggerOsd(
+          {
+            type: 'volume',
+            value: newVol,
+          },
+          500
+        );
+      }
+    }
+  };
+
+  const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (dragStartRef.current && isPointerDragging) {
+      const deltaX = e.clientX - dragStartRef.current.x;
+      const deltaY = dragStartRef.current.y - e.clientY;
+      if (Math.abs(deltaX) > Math.abs(deltaY)) {
+        const rect = e.currentTarget.getBoundingClientRect();
+        const duration = playbackStatus.duration || 100;
+        const seekOffset = (deltaX / rect.width) * Math.min(120, duration * 0.25);
+        const targetPos = Math.max(0, Math.min(duration, dragStartRef.current.initialPos + seekOffset));
+        onCommitSeek(targetPos);
+      }
+    }
+    dragStartRef.current = null;
+    setTimeout(() => setIsPointerDragging(false), 60);
+  };
+
+  // Viewport Click & Double-Tap Zones:
+  // Left 35% double-tap: -10s | Right 35% double-tap: +10s | Center double-tap: Fullscreen | Single click: Play/Pause
+  const handleViewportClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (isPointerDragging) return;
+
+    onVideoTapOrClick(e);
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    const ratio = (e.clientX - rect.left) / rect.width;
+
+    if (clickTimerRef.current) {
+      clearTimeout(clickTimerRef.current);
+      clickTimerRef.current = null;
+
+      if (ratio < 0.35) {
+        const currentPos = playbackStatus.position ?? 0;
+        const targetPos = Math.max(0, currentPos - 10);
+        onCommitSeek(targetPos);
+        triggerOsd({ type: 'double_tap_left', value: '10s' });
+      } else if (ratio > 0.65) {
+        const currentPos = playbackStatus.position ?? 0;
+        const maxPos = playbackStatus.duration ?? currentPos + 10;
+        const targetPos = Math.min(maxPos, currentPos + 10);
+        onCommitSeek(targetPos);
+        triggerOsd({ type: 'double_tap_right', value: '10s' });
+      } else {
+        onTriggerFullscreenToggle();
+      }
+    } else {
+      clickTimerRef.current = setTimeout(() => {
+        clickTimerRef.current = null;
+        if (playbackStatus.currentFile && playbackStatus.mediaState !== 'loading') {
+          onTogglePlayPause();
+          triggerOsd({
+            type: playbackStatus.paused ? 'play' : 'pause',
+          });
+        }
+      }, 230);
+    }
+  };
+
   // Fetch tracks snapshot from libmpv
   const fetchTracks = useCallback(async () => {
     if (window.nosvedAPI?.getTracks) {
@@ -181,6 +351,111 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
         if (onNavigateBack) {
           onNavigateBack();
         }
+        return;
+      }
+
+      // 'Space' / 'KeyK' -> Play / Pause
+      if (e.code === 'Space' || e.code === 'KeyK') {
+        e.preventDefault();
+        e.stopPropagation();
+        onTogglePlayPause();
+        triggerOsd({
+          type: playbackStatus.paused ? 'play' : 'pause',
+        });
+        return;
+      }
+
+      // 'KeyJ' -> 10s Rewind
+      if (e.code === 'KeyJ') {
+        e.preventDefault();
+        e.stopPropagation();
+        if (playbackStatus.position !== null) {
+          const newPos = Math.max(0, playbackStatus.position - 10);
+          onCommitSeek(newPos);
+          triggerOsd({ type: 'double_tap_left', value: '10s' });
+        }
+        return;
+      }
+
+      // 'KeyL' -> 10s Fast-Forward
+      if (e.code === 'KeyL') {
+        e.preventDefault();
+        e.stopPropagation();
+        if (playbackStatus.position !== null) {
+          const max = playbackStatus.duration ?? playbackStatus.position + 10;
+          const newPos = Math.min(max, playbackStatus.position + 10);
+          onCommitSeek(newPos);
+          triggerOsd({ type: 'double_tap_right', value: '10s' });
+        }
+        return;
+      }
+
+      // 'ArrowLeft' -> 5s Seek Backward
+      if (e.code === 'ArrowLeft') {
+        e.preventDefault();
+        e.stopPropagation();
+        if (playbackStatus.position !== null) {
+          const newPos = Math.max(0, playbackStatus.position - 5);
+          onCommitSeek(newPos);
+          triggerOsd({ type: 'seek', value: '-5s', subValue: formatTime(newPos) });
+        }
+        return;
+      }
+
+      // 'ArrowRight' -> 5s Seek Forward
+      if (e.code === 'ArrowRight') {
+        e.preventDefault();
+        e.stopPropagation();
+        if (playbackStatus.position !== null) {
+          const max = playbackStatus.duration ?? playbackStatus.position + 5;
+          const newPos = Math.min(max, playbackStatus.position + 5);
+          onCommitSeek(newPos);
+          triggerOsd({ type: 'seek', value: '+5s', subValue: formatTime(newPos) });
+        }
+        return;
+      }
+
+      // 'ArrowUp' -> Volume Up 5%
+      if (e.code === 'ArrowUp') {
+        e.preventDefault();
+        e.stopPropagation();
+        const newVol = Math.min(100, Math.round(playbackStatus.volume + 5));
+        if (window.nosvedAPI?.setVolume) {
+          window.nosvedAPI.setVolume(newVol).catch(console.error);
+        }
+        triggerOsd({ type: 'volume', value: newVol });
+        return;
+      }
+
+      // 'ArrowDown' -> Volume Down 5%
+      if (e.code === 'ArrowDown') {
+        e.preventDefault();
+        e.stopPropagation();
+        const newVol = Math.max(0, Math.round(playbackStatus.volume - 5));
+        if (window.nosvedAPI?.setVolume) {
+          window.nosvedAPI.setVolume(newVol).catch(console.error);
+        }
+        triggerOsd({ type: 'volume', value: newVol });
+        return;
+      }
+
+      // 'KeyM' -> Toggle Mute
+      if (e.code === 'KeyM') {
+        e.preventDefault();
+        e.stopPropagation();
+        onToggleMute();
+        triggerOsd({
+          type: 'mute',
+          value: playbackStatus.muted ? 'Unmuted' : 'Muted',
+        });
+        return;
+      }
+
+      // 'KeyF' -> Fullscreen Toggle
+      if (e.code === 'KeyF') {
+        e.preventDefault();
+        e.stopPropagation();
+        onTriggerFullscreenToggle();
         return;
       }
 
@@ -244,6 +519,11 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
           const digit = parseInt(e.code.replace('Digit', ''), 10);
           const targetSeconds = (playbackStatus.duration * digit) / 10;
           onCommitSeek(targetSeconds);
+          triggerOsd({
+            type: 'seek',
+            value: `${digit * 10}%`,
+            subValue: formatTime(targetSeconds),
+          });
           return;
         }
       }
@@ -262,7 +542,15 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
     onPlayNextPlaylistItem,
     onPlayPrevPlaylistItem,
     playbackStatus.duration,
+    playbackStatus.position,
+    playbackStatus.paused,
+    playbackStatus.volume,
+    playbackStatus.muted,
     onCommitSeek,
+    onTogglePlayPause,
+    onToggleMute,
+    onTriggerFullscreenToggle,
+    triggerOsd,
     resumePrompt,
     onDismissResumePrompt,
   ]);
@@ -491,9 +779,11 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
               }`
             : 'player-container w-full flex-1 min-h-0 relative select-none bg-black rounded-xl border border-border/60 overflow-hidden shadow-xl cursor-pointer'
         }
-        onClick={onVideoTapOrClick}
-        onDoubleClick={onTriggerFullscreenToggle}
-        onTouchEnd={onVideoTapOrClick}
+        onClick={handleViewportClick}
+        onWheel={handleViewportWheel}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
       >
         {/* Full-bleed Native Video Viewport: Never resized or squeezed by overlay controls */}
         <div
@@ -535,6 +825,73 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
             </>
           )}
         </div>
+
+        {/* On-Screen Display (OSD) HUD */}
+        {osd && (
+          <div className="absolute inset-0 pointer-events-none flex items-center justify-center z-40 animate-fadeIn">
+            {osd.type === 'volume' && (
+              <div className="flex flex-col items-center gap-2.5 px-6 py-4 rounded-2xl bg-black/80 backdrop-blur-md border border-white/10 text-white shadow-2xl min-w-[180px]">
+                {Number(osd.value) === 0 ? (
+                  <VolumeX size={36} className="text-destructive" />
+                ) : (
+                  <Volume2 size={36} className="text-primary" />
+                )}
+                <span className="text-sm font-semibold tracking-wide">Volume {osd.value}%</span>
+                <div className="w-full h-1.5 rounded-full bg-white/20 overflow-hidden">
+                  <div
+                    className="h-full bg-primary rounded-full transition-all duration-150"
+                    style={{ width: `${osd.value}%` }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {osd.type === 'seek' && (
+              <div className="flex flex-col items-center gap-2 px-6 py-4 rounded-2xl bg-black/80 backdrop-blur-md border border-white/10 text-white shadow-2xl">
+                <span className="text-primary font-bold text-lg font-mono">{osd.value}</span>
+                {osd.subValue && (
+                  <span className="text-xs font-mono text-white/80">{osd.subValue}</span>
+                )}
+              </div>
+            )}
+
+            {(osd.type === 'play' || osd.type === 'pause') && (
+              <div className="w-16 h-16 rounded-full bg-black/80 backdrop-blur-md border border-white/10 text-white shadow-2xl flex items-center justify-center">
+                {osd.type === 'play' ? (
+                  <Play size={32} className="text-primary ml-1" />
+                ) : (
+                  <Pause size={32} className="text-primary" />
+                )}
+              </div>
+            )}
+
+            {osd.type === 'mute' && (
+              <div className="flex flex-col items-center gap-2 px-6 py-4 rounded-2xl bg-black/80 backdrop-blur-md border border-white/10 text-white shadow-2xl">
+                <VolumeX size={36} className="text-destructive" />
+                <span className="text-xs font-semibold uppercase tracking-wider">{osd.value}</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Double-Tap Gesture Ripples */}
+        {osd?.type === 'double_tap_left' && (
+          <div className="absolute top-0 bottom-0 left-0 w-1/3 flex items-center justify-center pointer-events-none z-30">
+            <div className="flex flex-col items-center gap-1.5 px-5 py-3.5 rounded-2xl bg-black/60 backdrop-blur-md border border-white/10 text-white shadow-xl">
+              <RotateCcw size={28} className="text-primary" />
+              <span className="text-xs font-mono font-bold">-10s</span>
+            </div>
+          </div>
+        )}
+
+        {osd?.type === 'double_tap_right' && (
+          <div className="absolute top-0 bottom-0 right-0 w-1/3 flex items-center justify-center pointer-events-none z-30">
+            <div className="flex flex-col items-center gap-1.5 px-5 py-3.5 rounded-2xl bg-black/60 backdrop-blur-md border border-white/10 text-white shadow-xl">
+              <RotateCcw size={28} className="text-primary -scale-x-100" />
+              <span className="text-xs font-mono font-bold">+10s</span>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Playback Controls: Overlay in fullscreen, separate strip below viewing screen in windowed mode */}
@@ -742,24 +1099,6 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
               ) : null}
             </button>
 
-            {/* Media State Badge */}
-            {playbackStatus.currentFile && (
-              <span
-                className={`px-2 py-0.5 rounded text-[10px] font-bold tracking-wider uppercase border ${
-                  playbackStatus.mediaState === 'playing'
-                    ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
-                    : playbackStatus.mediaState === 'paused'
-                    ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
-                    : playbackStatus.mediaState === 'loading'
-                    ? 'bg-primary/15 text-primary border-primary/30'
-                    : playbackStatus.mediaState === 'ended'
-                    ? 'bg-muted/30 text-muted-foreground border-border'
-                    : 'bg-destructive/15 text-destructive border-destructive/30'
-                }`}
-              >
-                {playbackStatus.mediaState.toUpperCase()}
-              </span>
-            )}
 
             {/* Fullscreen Toggle Button */}
             <button

@@ -1,9 +1,12 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Library,
   FolderPlus,
   ListMusic,
   Trash2,
+  LayoutGrid,
+  List,
+  Play,
 } from 'lucide-react';
 import type { MediaItem } from '../types/electron';
 import { formatTime, formatBytes, formatDate } from '../utils/formatters';
@@ -26,6 +29,21 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   onRemoveMedia,
   onOpenAddToPlaylist,
 }) => {
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>(() => {
+    try {
+      return (localStorage.getItem('nosved_library_view_mode') as 'grid' | 'list') || 'grid';
+    } catch {
+      return 'grid';
+    }
+  });
+
+  const handleSetViewMode = (mode: 'grid' | 'list') => {
+    setViewMode(mode);
+    try {
+      localStorage.setItem('nosved_library_view_mode', mode);
+    } catch {}
+  };
+
   return (
     <div className="flex-1 min-h-0 h-full overflow-y-auto p-7 flex flex-col gap-6 max-w-[1400px] mx-auto w-full select-none">
       <div className="flex items-center justify-between pb-4 border-b border-border">
@@ -36,15 +54,47 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
             {libraryItems.length} videos
           </span>
         </div>
-        <button
-          type="button"
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-semibold shadow hover:scale-[1.02] active:scale-[0.98] transition-transform cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-primary border-none"
-          onClick={onImportFiles}
-          aria-label="Import video files to library"
-        >
-          <FolderPlus size={16} />
-          <span>Import Media</span>
-        </button>
+        <div className="flex items-center gap-3">
+          {/* View Mode Toggle */}
+          <div className="flex items-center bg-surface-elevated border border-border rounded-xl p-0.5 shadow-sm">
+            <button
+              type="button"
+              onClick={() => handleSetViewMode('grid')}
+              className={`p-1.5 rounded-lg transition cursor-pointer border-none ${
+                viewMode === 'grid'
+                  ? 'bg-primary text-primary-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground bg-transparent'
+              }`}
+              title="Grid View"
+              aria-label="Grid View"
+            >
+              <LayoutGrid size={15} />
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSetViewMode('list')}
+              className={`p-1.5 rounded-lg transition cursor-pointer border-none ${
+                viewMode === 'list'
+                  ? 'bg-primary text-primary-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground bg-transparent'
+              }`}
+              title="List View"
+              aria-label="List View"
+            >
+              <List size={15} />
+            </button>
+          </div>
+
+          <button
+            type="button"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-semibold shadow hover:scale-[1.02] active:scale-[0.98] transition-transform cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-primary border-none"
+            onClick={onImportFiles}
+            aria-label="Import video files to library"
+          >
+            <FolderPlus size={16} />
+            <span>Import Media</span>
+          </button>
+        </div>
       </div>
 
       {libraryItems.length === 0 ? (
@@ -63,7 +113,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
             <span>Import Videos</span>
           </button>
         </div>
-      ) : (
+      ) : viewMode === 'grid' ? (
         <div className="grid grid-cols-4 max-2xl:grid-cols-3 max-lg:grid-cols-2 max-sm:grid-cols-1 gap-4">
           {libraryItems.map((item) => (
             <div
@@ -92,6 +142,11 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                     Missing File
                   </span>
                 )}
+                <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="w-10 h-10 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow">
+                    <Play size={20} />
+                  </div>
+                </div>
               </div>
               <div className="p-3.5 flex flex-col gap-1.5 flex-1">
                 <div className="text-sm font-semibold text-foreground truncate" title={item.fileName}>
@@ -152,6 +207,97 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                   aria-label="Remove from Library"
                 >
                   <Trash2 size={15} />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        /* List Mode View */
+        <div className="flex flex-col gap-2.5">
+          {libraryItems.map((item) => (
+            <div
+              key={item.id}
+              className={`rounded-xl p-3 bg-surface border border-border hover:border-primary/50 hover:bg-surface-elevated transition-all duration-200 cursor-pointer flex items-center gap-4 group ${
+                item.isMissing ? 'opacity-50' : ''
+              }`}
+              onClick={() => !item.isMissing && onOpenMedia(item.filePath)}
+            >
+              <div className="w-24 sm:w-28 aspect-video rounded-lg overflow-hidden shrink-0 group-hover:scale-105 transition-transform relative bg-surface-dim flex items-center justify-center">
+                <VideoThumbnail
+                  thumbnailKey={item.thumbnailKey}
+                  mediaId={item.id}
+                  fileName={item.fileName}
+                  showThumbnails={showThumbnails}
+                  fallbackIconSize={20}
+                  imgClassName="w-full h-full object-cover"
+                />
+                {item.duration && (
+                  <span className="absolute bottom-1 right-1 px-1.5 py-0.2 rounded bg-black/80 backdrop-blur text-[9px] font-mono font-medium text-white">
+                    {formatTime(item.duration)}
+                  </span>
+                )}
+                {item.isMissing && (
+                  <span className="absolute top-1 left-1 px-1.5 py-0.2 rounded bg-destructive text-white text-[9px] font-bold">
+                    Missing
+                  </span>
+                )}
+              </div>
+              <div className="flex flex-col gap-1 flex-1 min-w-0">
+                <div className="text-sm font-semibold text-foreground truncate" title={item.fileName}>
+                  {item.fileName}
+                </div>
+                <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
+                  <span>{formatBytes(item.fileSize)}</span>
+                  <span className="opacity-50">&bull;</span>
+                  <span>Added {formatDate(item.firstAdded)}</span>
+                  {item.videoHeight && (
+                    <>
+                      <span className="opacity-50">&bull;</span>
+                      <span className="text-[10px] px-1.5 py-0.2 rounded bg-primary-container text-on-primary-container font-mono font-semibold">
+                        {item.videoHeight >= 2160
+                          ? '4K'
+                          : item.videoHeight >= 1080
+                          ? '1080p'
+                          : item.videoHeight >= 720
+                          ? '720p'
+                          : `${item.videoWidth}x${item.videoHeight}`}
+                      </span>
+                    </>
+                  )}
+                  {item.videoCodec && (
+                    <span className="text-[10px] px-1.5 py-0.2 rounded bg-surface-muted text-muted-foreground font-mono">
+                      {item.videoCodec.split(' ')[0]}
+                    </span>
+                  )}
+                  {item.fps && (
+                    <span className="text-[10px] px-1.5 py-0.2 rounded bg-surface-muted text-muted-foreground font-mono">
+                      {Math.round(item.fps)} fps
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button
+                  type="button"
+                  className="p-2 rounded-lg text-muted-foreground hover:text-primary hover:bg-surface-elevated transition-colors cursor-pointer border-none bg-transparent"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onOpenAddToPlaylist(item);
+                  }}
+                  title="Add to Playlist"
+                  aria-label="Add to Playlist"
+                >
+                  <ListMusic size={16} />
+                </button>
+                <button
+                  type="button"
+                  className="p-2 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors cursor-pointer border-none bg-transparent"
+                  onClick={(e) => onRemoveMedia(item.id, e)}
+                  title="Remove from Library"
+                  aria-label="Remove from Library"
+                >
+                  <Trash2 size={16} />
                 </button>
               </div>
             </div>

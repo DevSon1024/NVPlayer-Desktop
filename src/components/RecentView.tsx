@@ -1,5 +1,5 @@
-import React from 'react';
-import { History, Play, FolderOpen } from 'lucide-react';
+import React, { useState } from 'react';
+import { History, Play, FolderOpen, LayoutGrid, List } from 'lucide-react';
 import type { MediaItem } from '../types/electron';
 import { formatTime, formatDate } from '../utils/formatters';
 import { VideoThumbnail } from './VideoThumbnail';
@@ -17,6 +17,21 @@ export const RecentView: React.FC<RecentViewProps> = ({
   onOpenMedia,
   onOpenFile,
 }) => {
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>(() => {
+    try {
+      return (localStorage.getItem('nosved_recent_view_mode') as 'grid' | 'list') || 'list';
+    } catch {
+      return 'list';
+    }
+  });
+
+  const handleSetViewMode = (mode: 'grid' | 'list') => {
+    setViewMode(mode);
+    try {
+      localStorage.setItem('nosved_recent_view_mode', mode);
+    } catch {}
+  };
+
   return (
     <div className="flex-1 min-h-0 h-full overflow-y-auto p-7 flex flex-col gap-6 max-w-[1400px] mx-auto w-full select-none">
       <div className="flex items-center justify-between pb-4 border-b border-border">
@@ -26,6 +41,47 @@ export const RecentView: React.FC<RecentViewProps> = ({
           <span className="text-xs px-2.5 py-0.5 rounded-full bg-primary-container text-on-primary-container font-medium">
             {recentItems.length} videos
           </span>
+        </div>
+        <div className="flex items-center gap-3">
+          {/* View Mode Toggle */}
+          <div className="flex items-center bg-surface-elevated border border-border rounded-xl p-0.5 shadow-sm">
+            <button
+              type="button"
+              onClick={() => handleSetViewMode('list')}
+              className={`p-1.5 rounded-lg transition cursor-pointer border-none ${
+                viewMode === 'list'
+                  ? 'bg-primary text-primary-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground bg-transparent'
+              }`}
+              title="List View"
+              aria-label="List View"
+            >
+              <List size={15} />
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSetViewMode('grid')}
+              className={`p-1.5 rounded-lg transition cursor-pointer border-none ${
+                viewMode === 'grid'
+                  ? 'bg-primary text-primary-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground bg-transparent'
+              }`}
+              title="Grid View"
+              aria-label="Grid View"
+            >
+              <LayoutGrid size={15} />
+            </button>
+          </div>
+
+          <button
+            type="button"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-surface-elevated hover:bg-surface-muted text-foreground border border-border text-sm font-semibold shadow-sm hover:scale-[1.02] active:scale-[0.98] transition-transform cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            onClick={onOpenFile}
+            aria-label="Open a video"
+          >
+            <FolderOpen size={16} />
+            <span>Open Video</span>
+          </button>
         </div>
       </div>
 
@@ -45,7 +101,7 @@ export const RecentView: React.FC<RecentViewProps> = ({
             <span>Open a Video</span>
           </button>
         </div>
-      ) : (
+      ) : viewMode === 'list' ? (
         <div className="flex flex-col gap-2.5">
           {recentItems.map((item) => {
             const progressPercent =
@@ -60,14 +116,20 @@ export const RecentView: React.FC<RecentViewProps> = ({
                 }`}
                 onClick={() => !item.isMissing && onOpenMedia(item.filePath)}
               >
-                <div className="w-16 h-10 rounded-lg overflow-hidden shrink-0 group-hover:scale-105 transition-transform relative bg-surface-dim flex items-center justify-center">
+                <div className="w-24 sm:w-28 aspect-video rounded-lg overflow-hidden shrink-0 group-hover:scale-105 transition-transform relative bg-surface-dim flex items-center justify-center">
                   <VideoThumbnail
                     thumbnailKey={item.thumbnailKey}
                     mediaId={item.id}
                     fileName={item.fileName}
                     showThumbnails={showThumbnails}
-                    fallbackIconSize={18}
+                    fallbackIconSize={20}
+                    imgClassName="w-full h-full object-cover"
                   />
+                  {item.duration && (
+                    <span className="absolute bottom-1 right-1 px-1.5 py-0.2 rounded bg-black/80 backdrop-blur text-[9px] font-mono font-medium text-white">
+                      {formatTime(item.duration)}
+                    </span>
+                  )}
                 </div>
                 <div className="flex flex-col gap-1 flex-1 min-w-0">
                   <div className="text-sm font-semibold text-foreground truncate" title={item.filePath}>
@@ -101,12 +163,74 @@ export const RecentView: React.FC<RecentViewProps> = ({
                 <div className="flex items-center shrink-0">
                   <button
                     type="button"
-                    className="w-9 h-9 rounded-full bg-primary text-primary-foreground flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform disabled:opacity-40 disabled:cursor-not-allowed border-none outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-pointer"
+                    className="w-9 h-9 rounded-full bg-primary text-primary-foreground flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform disabled:opacity-40 disabled:cursor-not-allowed border-none outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-pointer shadow"
                     disabled={item.isMissing}
                     title="Play video"
                   >
                     <Play size={16} />
                   </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        /* Grid Mode View */
+        <div className="grid grid-cols-4 max-2xl:grid-cols-3 max-lg:grid-cols-2 max-sm:grid-cols-1 gap-4">
+          {recentItems.map((item) => {
+            const progressPercent =
+              item.duration && item.lastPosition
+                ? Math.min(100, Math.round((item.lastPosition / item.duration) * 100))
+                : 0;
+            return (
+              <div
+                key={item.id}
+                className={`rounded-xl overflow-hidden bg-surface border border-border hover:border-primary/50 hover:shadow-md transition-all duration-200 cursor-pointer group flex flex-col ${
+                  item.isMissing ? 'opacity-50' : ''
+                }`}
+                onClick={() => !item.isMissing && onOpenMedia(item.filePath)}
+              >
+                <div className="aspect-video w-full relative bg-surface-dim overflow-hidden flex items-center justify-center">
+                  <VideoThumbnail
+                    thumbnailKey={item.thumbnailKey}
+                    mediaId={item.id}
+                    fileName={item.fileName}
+                    showThumbnails={showThumbnails}
+                    fallbackIconSize={28}
+                    imgClassName="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                  />
+                  {item.duration && (
+                    <span className="absolute bottom-1.5 right-1.5 px-1.5 py-0.5 rounded bg-black/80 backdrop-blur text-[10px] font-mono font-medium text-white">
+                      {formatTime(item.duration)}
+                    </span>
+                  )}
+                  {progressPercent > 0 && (
+                    <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/40">
+                      <div
+                        className="h-full bg-primary transition-all"
+                        style={{ width: `${progressPercent}%` }}
+                      />
+                    </div>
+                  )}
+                  <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="w-10 h-10 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow">
+                      <Play size={20} />
+                    </div>
+                  </div>
+                </div>
+                <div className="p-3.5 flex flex-col gap-1.5 flex-1">
+                  <div className="text-sm font-semibold text-foreground truncate" title={item.fileName}>
+                    {item.fileName}
+                  </div>
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
+                    <span>Last played: {formatDate(item.lastOpened)}</span>
+                    {item.lastPosition && (
+                      <>
+                        <span className="opacity-50">&bull;</span>
+                        <span className="text-primary font-medium">At {formatTime(item.lastPosition)}</span>
+                      </>
+                    )}
+                  </div>
                 </div>
               </div>
             );

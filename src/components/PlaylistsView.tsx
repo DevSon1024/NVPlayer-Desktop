@@ -10,6 +10,8 @@ import {
   Video,
   ArrowUp,
   ArrowDown,
+  LayoutGrid,
+  List,
 } from 'lucide-react';
 import type { Playlist, PlaylistItem } from '../types/electron';
 import type { ActivePlaylistState } from './PlayerView';
@@ -91,6 +93,21 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({
   const [isDraggingOverDetails, setIsDraggingOverDetails] = useState(false);
   const [dragOverPlaylistId, setDragOverPlaylistId] = useState<string | null>(null);
   const dragCounterRef = useRef(0);
+
+  const [itemsViewMode, setItemsViewMode] = useState<'grid' | 'list'>(() => {
+    try {
+      return (localStorage.getItem('nosved_playlist_view_mode') as 'grid' | 'list') || 'list';
+    } catch {
+      return 'list';
+    }
+  });
+
+  const handleSetItemsViewMode = (mode: 'grid' | 'list') => {
+    setItemsViewMode(mode);
+    try {
+      localStorage.setItem('nosved_playlist_view_mode', mode);
+    } catch {}
+  };
 
   const handleDetailsDragEnter = (e: React.DragEvent) => {
     e.preventDefault();
@@ -294,6 +311,34 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({
                 </div>
               </div>
               <div className="flex items-center gap-2.5">
+                <div className="flex items-center bg-surface-dim p-0.5 rounded-xl border border-border">
+                  <button
+                    type="button"
+                    onClick={() => handleSetItemsViewMode('grid')}
+                    className={`p-1.5 rounded-lg transition-colors cursor-pointer border-none ${
+                      itemsViewMode === 'grid'
+                        ? 'bg-surface-elevated text-primary shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground bg-transparent'
+                    }`}
+                    title="Grid View"
+                    aria-label="Grid View"
+                  >
+                    <LayoutGrid size={15} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSetItemsViewMode('list')}
+                    className={`p-1.5 rounded-lg transition-colors cursor-pointer border-none ${
+                      itemsViewMode === 'list'
+                        ? 'bg-surface-elevated text-primary shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground bg-transparent'
+                    }`}
+                    title="List View"
+                    aria-label="List View"
+                  >
+                    <List size={15} />
+                  </button>
+                </div>
                 <button
                   type="button"
                   className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-primary-foreground font-semibold text-sm shadow hover:scale-[1.02] active:scale-[0.98] transition-transform cursor-pointer border-none disabled:opacity-40 disabled:cursor-not-allowed outline-none focus-visible:ring-2 focus-visible:ring-primary"
@@ -363,7 +408,7 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({
                   </button>
                 </div>
               </div>
-            ) : (
+            ) : itemsViewMode === 'list' ? (
               <div className="flex flex-col gap-2">
                 {selectedPlaylistDetails.items.map((item, idx) => {
                   const isCurrentlyPlaying =
@@ -474,6 +519,131 @@ export const PlaylistsView: React.FC<PlaylistsViewProps> = ({
                         >
                           <Trash2 size={14} />
                         </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              /* Grid Mode View */
+              <div className="grid grid-cols-4 max-2xl:grid-cols-3 max-lg:grid-cols-2 max-sm:grid-cols-1 gap-4">
+                {selectedPlaylistDetails.items.map((item, idx) => {
+                  const isCurrentlyPlaying =
+                    activePlaylist?.playlistId === selectedPlaylistDetails.playlist.id &&
+                    activePlaylist?.currentIndex === idx;
+                  return (
+                    <div
+                      key={item.id}
+                      className={`rounded-xl overflow-hidden bg-surface border border-border hover:border-primary/50 hover:shadow-md transition-all duration-200 group flex flex-col relative ${
+                        isCurrentlyPlaying ? 'border-primary ring-2 ring-primary/60 bg-primary-container/10' : ''
+                      } ${item.media?.isMissing ? 'opacity-50' : ''}`}
+                    >
+                      <div className="aspect-video w-full relative bg-surface-dim overflow-hidden flex items-center justify-center">
+                        <VideoThumbnail
+                          thumbnailKey={item.media?.thumbnailKey}
+                          mediaId={item.media?.id}
+                          fileName={item.media?.fileName}
+                          showThumbnails={showThumbnails}
+                          fallbackIconSize={28}
+                          imgClassName="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        />
+                        <span className="absolute top-2 left-2 px-2 py-0.5 rounded-md bg-black/75 backdrop-blur text-xs font-mono font-bold text-white shadow">
+                          #{idx + 1}
+                        </span>
+                        {item.media?.duration && (
+                          <span className="absolute bottom-2 right-2 px-1.5 py-0.5 rounded bg-black/80 backdrop-blur text-[10px] font-mono font-medium text-white">
+                            {formatTime(item.media.duration)}
+                          </span>
+                        )}
+                        <div
+                          className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                          onClick={() => {
+                            if (!item.media?.isMissing) {
+                              onPlayPlaylistItem(
+                                selectedPlaylistDetails.playlist,
+                                selectedPlaylistDetails.items,
+                                idx
+                              );
+                            }
+                          }}
+                        >
+                          <div className="w-10 h-10 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow hover:scale-110 transition-transform">
+                            <Play size={20} />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="p-3 flex flex-col gap-1.5 flex-1 justify-between">
+                        <div className="flex flex-col min-w-0">
+                          <span className="text-sm font-semibold text-foreground truncate" title={item.media?.fileName}>
+                            {item.media?.fileName ?? 'Unknown file'}
+                          </span>
+                          <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-0.5">
+                            {item.media?.videoHeight && (
+                              <span>
+                                {item.media.videoHeight >= 1080
+                                  ? `${item.media.videoHeight}p`
+                                  : `${item.media.videoWidth}x${item.media.videoHeight}`}
+                              </span>
+                            )}
+                            {item.media?.isMissing && (
+                              <span className="text-destructive font-bold text-[10px]">
+                                Missing
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between pt-2 border-t border-border/60 mt-1">
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              className="p-1 rounded text-muted-foreground hover:text-primary hover:bg-surface-elevated disabled:opacity-20 cursor-pointer border-none bg-transparent"
+                              disabled={idx === 0}
+                              onClick={() =>
+                                onReorderItem(
+                                  selectedPlaylistDetails.playlist.id,
+                                  idx,
+                                  idx - 1
+                                )
+                              }
+                              title="Move Up"
+                              aria-label="Move Up"
+                            >
+                              <ArrowUp size={13} />
+                            </button>
+                            <button
+                              type="button"
+                              className="p-1 rounded text-muted-foreground hover:text-primary hover:bg-surface-elevated disabled:opacity-20 cursor-pointer border-none bg-transparent"
+                              disabled={idx === selectedPlaylistDetails.items.length - 1}
+                              onClick={() =>
+                                onReorderItem(
+                                  selectedPlaylistDetails.playlist.id,
+                                  idx,
+                                  idx + 1
+                                )
+                              }
+                              title="Move Down"
+                              aria-label="Move Down"
+                            >
+                              <ArrowDown size={13} />
+                            </button>
+                          </div>
+                          <button
+                            type="button"
+                            className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors cursor-pointer border-none bg-transparent"
+                            onClick={() =>
+                              onRemovePlaylistItem(
+                                selectedPlaylistDetails.playlist.id,
+                                item.mediaId
+                              )
+                            }
+                            title="Remove from Playlist"
+                            aria-label="Remove from Playlist"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
                       </div>
                     </div>
                   );
