@@ -162,6 +162,8 @@ export interface NosvedAPI {
   setSubtitlesVisible: (visible: boolean) => Promise<PlayerTracksSnapshotPayload>;
   selectSubtitleFile: () => Promise<{ canceled: boolean; filePath?: string; tracks?: PlayerTracksSnapshotPayload; error?: string }>;
   setSubtitleDelay: (seconds: number) => Promise<number>;
+  setSubtitleFontSize: (size: number) => Promise<number>;
+  setSubtitleColor: (color: string) => Promise<string>;
   setAudioDelay: (seconds: number) => Promise<number>;
 
   // Phase 8 Fullscreen APIs
@@ -237,6 +239,8 @@ const api: NosvedAPI = {
   setSubtitlesVisible: (visible) => ipcRenderer.invoke('player:set-subtitles-visible', visible),
   selectSubtitleFile: () => ipcRenderer.invoke('player:select-subtitle-file'),
   setSubtitleDelay: (seconds) => ipcRenderer.invoke('player:set-subtitle-delay', seconds),
+  setSubtitleFontSize: (size) => ipcRenderer.invoke('player:set-subtitle-font-size', size),
+  setSubtitleColor: (color) => ipcRenderer.invoke('player:set-subtitle-color', color),
   setAudioDelay: (seconds) => ipcRenderer.invoke('player:set-audio-delay', seconds),
   onPlaybackStatus: (callback) => {
     const handler = (_event: Electron.IpcRendererEvent, status: unknown) => {

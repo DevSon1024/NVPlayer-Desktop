@@ -156,6 +156,8 @@ export interface NosvedAPI {
   setSubtitlesVisible: (visible: boolean) => Promise<PlayerTracksSnapshot>;
   selectSubtitleFile: () => Promise<{ canceled: boolean; filePath?: string; tracks?: PlayerTracksSnapshot; error?: string }>;
   setSubtitleDelay: (seconds: number) => Promise<number>;
+  setSubtitleFontSize: (size: number) => Promise<number>;
+  setSubtitleColor: (color: string) => Promise<string>;
   setAudioDelay: (seconds: number) => Promise<number>;
 
   // Fullscreen APIs (Phase 8)

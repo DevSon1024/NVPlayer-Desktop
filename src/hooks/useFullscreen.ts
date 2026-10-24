@@ -8,6 +8,7 @@ interface UseFullscreenProps {
   playbackStatus: PlaybackStatus;
   isScrubbing: boolean;
   isTrackModalOpen: boolean;
+  modalDock?: 'right' | 'left';
   resumePrompt: ResumePromptState | null;
 }
 
@@ -17,6 +18,7 @@ export function useFullscreen({
   playbackStatus,
   isScrubbing,
   isTrackModalOpen,
+  modalDock,
   resumePrompt,
 }: UseFullscreenProps) {
   const [isAppFullscreen, setIsAppFullscreen] = useState(false);
@@ -55,7 +57,6 @@ export function useFullscreen({
       playbackStatus.mediaState !== 'idle' &&
       playbackStatus.mediaState !== 'error' &&
       (activeTab === 'player' || isPlayerFullscreen) &&
-      !isTrackModalOpen &&
       (!isPlayerFullscreen || !resumePrompt)
     );
 
@@ -90,16 +91,21 @@ export function useFullscreen({
     isPlayerFullscreen,
     videoViewportEl,
     isTrackModalOpen,
+    modalDock,
     resumePrompt,
   ]);
 
   useEffect(() => {
     updateVideoBounds();
-    const rafId = requestAnimationFrame(() => {
+    const raf1 = requestAnimationFrame(() => {
       updateVideoBounds();
+      const raf2 = requestAnimationFrame(() => {
+        updateVideoBounds();
+      });
+      return () => cancelAnimationFrame(raf2);
     });
-    return () => cancelAnimationFrame(rafId);
-  }, [updateVideoBounds, isPlayerFullscreen, isAppFullscreen, showOverlay, activeTab, resumePrompt, isTrackModalOpen]);
+    return () => cancelAnimationFrame(raf1);
+  }, [updateVideoBounds, isPlayerFullscreen, isAppFullscreen, showOverlay, activeTab, resumePrompt, isTrackModalOpen, modalDock]);
 
   useEffect(() => {
     if (!videoViewportEl) {
@@ -132,6 +138,11 @@ export function useFullscreen({
     };
   }, [videoViewportEl, updateVideoBounds]);
 
+  const isTrackModalOpenRef = useRef(isTrackModalOpen);
+  useEffect(() => {
+    isTrackModalOpenRef.current = isTrackModalOpen;
+  }, [isTrackModalOpen]);
+
   // Fullscreen auto-hide timer management (2.5-second timeout on inactivity during active playback)
   const resetInactivityTimer = useCallback(() => {
     if (inactivityTimerRef.current) {
@@ -141,14 +152,14 @@ export function useFullscreen({
 
     if (isPlayerFullscreenRef.current) {
       const status = playbackStatusRef.current;
-      // Keep controls visible when paused or when ended
-      if (status.paused || status.mediaState === 'paused' || status.mediaState === 'ended') {
+      // Keep controls visible when paused, ended, or when track/subtitle modal is open
+      if (status.paused || status.mediaState === 'paused' || status.mediaState === 'ended' || isTrackModalOpenRef.current) {
         setShowOverlay(true);
         return;
       }
       setShowOverlay(true);
       inactivityTimerRef.current = setTimeout(() => {
-        if (!isScrubbingRef.current && !isInteractingWithControlsRef.current && !isControlsFocusedRef.current) {
+        if (!isScrubbingRef.current && !isInteractingWithControlsRef.current && !isControlsFocusedRef.current && !isTrackModalOpenRef.current) {
           setShowOverlay(false);
         }
       }, 2500);
@@ -164,15 +175,15 @@ export function useFullscreen({
 
     if (isPlayerFullscreen) {
       const isPlaying = !playbackStatus.paused && playbackStatus.mediaState !== 'paused' && playbackStatus.mediaState !== 'ended';
-      if (isPlaying && wasPaused) {
-        // Hide controls immediately on active playback resume
+      if (isPlaying && wasPaused && !isTrackModalOpen) {
+        // Hide controls immediately on active playback resume only if track modal is closed
         if (inactivityTimerRef.current) {
           clearTimeout(inactivityTimerRef.current);
           inactivityTimerRef.current = null;
         }
         setShowOverlay(false);
-      } else if (!isPlaying) {
-        // Keep controls visible when paused
+      } else if (!isPlaying || isTrackModalOpen) {
+        // Keep controls visible when paused or track modal is open
         setShowOverlay(true);
       }
     } else {

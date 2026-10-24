@@ -939,6 +939,30 @@ export class NativePlayerService {
     return seconds;
   }
 
+  public async setSubtitleFontSize(size: number): Promise<number> {
+    if (!this.handle || !this.funcs) {
+      throw new Error('Cannot set subtitle font size: Native player instance is not initialized');
+    }
+    const code = this.funcs.mpv_set_property_string(this.handle, 'sub-font-size', String(size));
+    if (code < 0) {
+      const errStr = this.funcs.mpv_error_string(code);
+      throw new Error(`Failed to set subtitle font size: ${errStr}`);
+    }
+    return size;
+  }
+
+  public async setSubtitleColor(color: string): Promise<string> {
+    if (!this.handle || !this.funcs) {
+      throw new Error('Cannot set subtitle color: Native player instance is not initialized');
+    }
+    const code = this.funcs.mpv_set_property_string(this.handle, 'sub-color', color);
+    if (code < 0) {
+      const errStr = this.funcs.mpv_error_string(code);
+      throw new Error(`Failed to set subtitle color: ${errStr}`);
+    }
+    return color;
+  }
+
   public async setAudioDelay(seconds: number): Promise<number> {
     if (!this.handle || !this.funcs) {
       throw new Error('Cannot set audio delay: Native player instance is not initialized');

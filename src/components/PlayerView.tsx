@@ -15,16 +15,15 @@ import {
   SkipForward,
   Headphones,
   Subtitles,
-  Check,
-  Sliders,
-  FileText,
   ArrowLeft,
   Camera,
 } from 'lucide-react';
 import type { PlaybackStatus, PlaylistItem, PlayerTracksSnapshot } from '../types/electron';
+import type { AppSettings } from '../types/settings';
 import { formatTime } from '../utils/formatters';
 import { M3GappedScrubber } from './M3GappedScrubber';
 import { FrameCaptureModal } from './FrameCaptureModal';
+import { AudioSubtitleModal, TrackModalTab } from './modals/AudioSubtitleModal';
 
 export interface ActivePlaylistState {
   playlistId: string;
@@ -51,6 +50,8 @@ export interface PlayerViewProps {
   scrubPosition: number | null;
   isTrackModalOpen?: boolean;
   onTrackModalOpenChange?: (open: boolean) => void;
+  modalDock?: 'right' | 'left';
+  onToggleModalDock?: () => void;
   onNavigateBack?: () => void;
   onOpenFile: () => void;
   onTogglePlayPause: () => void;
@@ -75,6 +76,8 @@ export interface PlayerViewProps {
   onFrameBackStep?: () => void;
   onCaptureFrame?: (customDir?: string) => Promise<{ success: boolean; filePath?: string; frameNumber?: number; error?: string }>;
   onSetSpeed?: (speed: number) => void;
+  settings?: AppSettings;
+  onUpdateSetting?: <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => Promise<void> | void;
 }
 
 const SPEED_STEPS = [0.5, 1.0, 1.25, 1.5, 2.0];
@@ -100,6 +103,8 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
   scrubPosition,
   isTrackModalOpen: externalModalOpen,
   onTrackModalOpenChange,
+  modalDock: externalModalDock,
+  onToggleModalDock,
   onNavigateBack,
   onOpenFile,
   onTogglePlayPause,
@@ -122,6 +127,8 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
   onFrameBackStep,
   onCaptureFrame,
   onSetSpeed,
+  settings,
+  onUpdateSetting,
 }) => {
   const [tracks, setTracks] = useState<PlayerTracksSnapshot | null>(null);
   const [internalModalOpen, setInternalModalOpen] = useState(false);
@@ -138,9 +145,61 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
     [onTrackModalOpenChange]
   );
 
-  const [activeTab, setActiveTab] = useState<'audio' | 'subtitles'>('audio');
+  const [activeTab, setActiveTab] = useState<TrackModalTab>('audio');
+  const [internalModalDock, setInternalModalDock] = useState<'right' | 'left'>('right');
+  const modalDock = externalModalDock !== undefined ? externalModalDock : internalModalDock;
+
+  const handleToggleDock = useCallback(() => {
+    if (onToggleModalDock) {
+      onToggleModalDock();
+    } else {
+      setInternalModalDock((prev) => (prev === 'right' ? 'left' : 'right'));
+    }
+  }, [onToggleModalDock]);
+
   const [audioDelay, setAudioDelay] = useState(0);
   const [subtitleDelay, setSubtitleDelay] = useState(0);
+
+  // Immediate native bounds synchronization whenever modal dock or open state changes
+  useEffect(() => {
+    const syncBounds = () => {
+      if (!window.nosvedAPI?.setVideoBounds) return;
+      const el = document.getElementById('nosved-video-viewport');
+      if (el) {
+        const rect = el.getBoundingClientRect();
+        const dpr = window.devicePixelRatio || 1;
+        window.nosvedAPI
+          .setVideoBounds({
+            x: Math.round(rect.left * dpr),
+            y: Math.round(rect.top * dpr),
+            width: Math.max(0, Math.round(rect.width * dpr)),
+            height: Math.max(0, Math.round(rect.height * dpr)),
+            visible: true,
+          })
+          .catch(console.error);
+      }
+    };
+
+    syncBounds();
+    const raf1 = requestAnimationFrame(() => {
+      syncBounds();
+      const raf2 = requestAnimationFrame(() => {
+        syncBounds();
+      });
+      return () => cancelAnimationFrame(raf2);
+    });
+    return () => cancelAnimationFrame(raf1);
+  }, [modalDock, isTrackModalOpen]);
+
+  // Sync subtitle settings to native libmpv whenever settings or file changes
+  useEffect(() => {
+    if (settings?.subtitleFontSize && window.nosvedAPI?.setSubtitleFontSize) {
+      window.nosvedAPI.setSubtitleFontSize(settings.subtitleFontSize).catch(console.error);
+    }
+    if (settings?.subtitleColor && window.nosvedAPI?.setSubtitleColor) {
+      window.nosvedAPI.setSubtitleColor(settings.subtitleColor).catch(console.error);
+    }
+  }, [settings?.subtitleFontSize, settings?.subtitleColor, playbackStatus.currentFile]);
 
   // On-Screen Display (OSD) HUD State & Trigger
   interface OsdState {
@@ -651,8 +710,8 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
     <div
       className={
         isFullscreen
-          ? `player-fullscreen-active fixed inset-0 z-50 h-screen w-screen p-0 m-0 border-none bg-black overflow-hidden select-none ${
-              !showOverlay && !isFrameCaptureOpen ? 'cursor-none' : 'cursor-default'
+          ? `player-fullscreen-active fixed inset-0 z-50 h-screen w-screen p-0 m-0 border-none bg-black overflow-hidden select-none flex flex-col ${
+              !showOverlay && !isFrameCaptureOpen && !isTrackModalOpen ? 'cursor-none' : 'cursor-default'
             }`
           : 'w-full flex-1 min-h-0 h-full flex flex-col p-2 gap-2 overflow-hidden select-none bg-background'
       }
@@ -788,13 +847,57 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
         </div>
       )}
 
-      {/* Native Player Video Screen Container */}
+      {/* Player Middle Row: Dynamic Flex Layout to eliminate Win32 HWND airspace occlusion */}
       <div
         className={
           isFullscreen
-            ? 'player-container fullscreen-player-container absolute inset-0 w-full h-full bg-black overflow-hidden select-none cursor-pointer'
-            : 'player-container w-full flex-1 min-h-0 relative select-none bg-black rounded-xl border border-border/60 overflow-hidden shadow-xl cursor-pointer'
+            ? 'relative w-full flex-1 min-h-0 flex flex-row overflow-hidden'
+            : 'w-full flex-1 min-h-0 flex flex-row gap-2 overflow-hidden relative'
         }
+      >
+        {/* Docked Left Modal */}
+        {isTrackModalOpen && modalDock === 'left' && (
+          <AudioSubtitleModal
+            isOpen={Boolean(isTrackModalOpen)}
+            onClose={() => setModalOpen(false)}
+            activeTab={activeTab}
+            onTabChange={setActiveTab}
+            tracks={tracks}
+            audioDelay={audioDelay}
+            subtitleDelay={subtitleDelay}
+            onSelectAudioTrack={handleSelectAudioTrack}
+            onSelectSubtitleTrack={handleSelectSubtitleTrack}
+            onToggleSubtitlesVisible={handleToggleSubtitlesVisible}
+            onLoadExternalSubtitle={handleLoadExternalSubtitle}
+            onAudioDelayChange={handleAudioDelayChange}
+            onSubtitleDelayChange={handleSubtitleDelayChange}
+            onResetAudioDelay={async () => {
+              setAudioDelay(0);
+              if (window.nosvedAPI?.setAudioDelay) {
+                await window.nosvedAPI.setAudioDelay(0).catch(console.error);
+              }
+            }}
+            onResetSubtitleDelay={async () => {
+              setSubtitleDelay(0);
+              if (window.nosvedAPI?.setSubtitleDelay) {
+                await window.nosvedAPI.setSubtitleDelay(0).catch(console.error);
+              }
+            }}
+            settings={settings}
+            onUpdateSetting={onUpdateSetting}
+            dockPosition="left"
+            onToggleDock={handleToggleDock}
+            isFullscreen={isFullscreen}
+          />
+        )}
+
+        {/* Native Player Video Screen Container */}
+        <div
+          className={
+            isFullscreen
+              ? 'player-container fullscreen-player-container flex-1 min-h-0 h-full relative bg-black overflow-hidden select-none cursor-pointer'
+              : 'player-container flex-1 min-h-0 h-full relative select-none bg-black rounded-xl border border-border/60 overflow-hidden shadow-xl cursor-pointer'
+          }
         onClick={handleViewportClick}
         onWheel={handleViewportWheel}
         onPointerDown={handlePointerDown}
@@ -902,6 +1005,43 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
               <span className="text-xs font-mono font-bold">+10s</span>
             </div>
           </div>
+        )}
+      </div>
+
+        {/* Docked Right Modal */}
+        {isTrackModalOpen && modalDock === 'right' && (
+          <AudioSubtitleModal
+            isOpen={Boolean(isTrackModalOpen)}
+            onClose={() => setModalOpen(false)}
+            activeTab={activeTab}
+            onTabChange={setActiveTab}
+            tracks={tracks}
+            audioDelay={audioDelay}
+            subtitleDelay={subtitleDelay}
+            onSelectAudioTrack={handleSelectAudioTrack}
+            onSelectSubtitleTrack={handleSelectSubtitleTrack}
+            onToggleSubtitlesVisible={handleToggleSubtitlesVisible}
+            onLoadExternalSubtitle={handleLoadExternalSubtitle}
+            onAudioDelayChange={handleAudioDelayChange}
+            onSubtitleDelayChange={handleSubtitleDelayChange}
+            onResetAudioDelay={async () => {
+              setAudioDelay(0);
+              if (window.nosvedAPI?.setAudioDelay) {
+                await window.nosvedAPI.setAudioDelay(0).catch(console.error);
+              }
+            }}
+            onResetSubtitleDelay={async () => {
+              setSubtitleDelay(0);
+              if (window.nosvedAPI?.setSubtitleDelay) {
+                await window.nosvedAPI.setSubtitleDelay(0).catch(console.error);
+              }
+            }}
+            settings={settings}
+            onUpdateSetting={onUpdateSetting}
+            dockPosition="right"
+            onToggleDock={handleToggleDock}
+            isFullscreen={isFullscreen}
+          />
         )}
       </div>
 
@@ -1180,391 +1320,6 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
                   {isFullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
                 </button>
               </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Audio & Subtitle Control Modal */}
-      {isTrackModalOpen && (
-        <div
-          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 animate-fadeIn"
-          onClick={() => setModalOpen(false)}
-        >
-          <div
-            className="bg-surface-elevated border border-border rounded-3xl shadow-2xl max-w-lg w-full flex flex-col overflow-hidden text-foreground animate-scaleUp"
-            onClick={(e) => e.stopPropagation()}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="tracks-dialog-title"
-          >
-            {/* Modal Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-surface">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-primary-container flex items-center justify-center text-on-primary-container">
-                  {activeTab === 'audio' ? <Headphones size={18} /> : <Subtitles size={18} />}
-                </div>
-                <div>
-                  <h3 id="tracks-dialog-title" className="text-base font-bold text-foreground tracking-tight">
-                    Audio & Subtitle Settings
-                  </h3>
-                  <p className="text-[11px] text-muted-foreground">Select streams and adjust synchronization delay</p>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                className="w-8 h-8 rounded-xl bg-surface-muted hover:bg-surface text-foreground flex items-center justify-center transition border-none cursor-pointer"
-                onClick={() => setModalOpen(false)}
-                title="Close (Esc)"
-                aria-label="Close dialog"
-              >
-                <X size={16} />
-              </button>
-            </div>
-
-            {/* Modal Tabs */}
-            <div className="flex items-center px-6 pt-4 gap-2 bg-surface-elevated border-b border-border">
-              <button
-                type="button"
-                className={`flex items-center gap-2 px-4 py-2 rounded-t-xl text-xs font-semibold transition border-none cursor-pointer border-b-2 ${
-                  activeTab === 'audio'
-                    ? 'border-primary text-primary bg-primary/10'
-                    : 'border-transparent text-muted-foreground hover:text-foreground'
-                }`}
-                onClick={() => setActiveTab('audio')}
-              >
-                <Headphones size={14} />
-                <span>Audio Tracks ({tracks?.audioTracks.length || 0})</span>
-              </button>
-
-              <button
-                type="button"
-                className={`flex items-center gap-2 px-4 py-2 rounded-t-xl text-xs font-semibold transition border-none cursor-pointer border-b-2 ${
-                  activeTab === 'subtitles'
-                    ? 'border-primary text-primary bg-primary/10'
-                    : 'border-transparent text-muted-foreground hover:text-foreground'
-                }`}
-                onClick={() => setActiveTab('subtitles')}
-              >
-                <Subtitles size={14} />
-                <span>Subtitles ({tracks?.subtitleTracks.length || 0})</span>
-              </button>
-            </div>
-
-            {/* Modal Body */}
-            <div className="p-6 flex flex-col gap-5 max-h-[60vh] overflow-y-auto">
-              {activeTab === 'audio' && (
-                <div className="flex flex-col gap-4">
-                  <div className="flex flex-col gap-1.5">
-                    <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
-                      Select Active Audio Stream
-                    </span>
-
-                    <div className="flex flex-col gap-2 mt-1">
-                      {tracks && tracks.audioTracks.length > 0 ? (
-                        tracks.audioTracks.map((tr) => {
-                          const isSelected =
-                            String(tracks.selectedAudioId) === String(tr.id) ||
-                            (tr.selected && tracks.selectedAudioId !== 'no');
-                          return (
-                            <button
-                              key={tr.id}
-                              type="button"
-                              className={`flex items-center justify-between p-3.5 rounded-2xl cursor-pointer transition border text-left w-full ${
-                                isSelected
-                                  ? 'bg-primary-container text-on-primary-container border-primary shadow-sm'
-                                  : 'bg-surface border-border hover:bg-surface-muted text-foreground'
-                              }`}
-                              onClick={() => handleSelectAudioTrack(tr.id)}
-                            >
-                              <div className="flex items-center gap-3 min-w-0">
-                                <div
-                                  className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 ${
-                                    isSelected
-                                      ? 'bg-primary text-primary-foreground shadow'
-                                      : 'border border-border text-transparent'
-                                  }`}
-                                >
-                                  <Check size={13} />
-                                </div>
-                                <div className="flex flex-col truncate">
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-xs font-bold truncate">
-                                      Track {tr.id}: {tr.title || tr.lang || `Audio Stream ${tr.id}`}
-                                    </span>
-                                    {isSelected && (
-                                      <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-primary text-primary-foreground">
-                                        Active
-                                      </span>
-                                    )}
-                                  </div>
-                                  <div className="flex items-center gap-2 mt-0.5 text-[11px] opacity-80 font-mono">
-                                    {tr.lang && <span>Language: {tr.lang.toUpperCase()}</span>}
-                                    {tr.codec && <span>• Codec: {tr.codec.toUpperCase()}</span>}
-                                    {tr.isDefault && <span className="text-primary font-bold">• Default</span>}
-                                  </div>
-                                </div>
-                              </div>
-                            </button>
-                          );
-                        })
-                      ) : (
-                        <div className="p-6 text-center text-muted-foreground text-xs bg-surface border border-border rounded-2xl">
-                          No multiple audio streams detected for this video file.
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Audio Delay Offset Adjuster */}
-                  <div className="p-4 bg-surface border border-border rounded-2xl flex flex-col gap-2.5">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
-                        <Sliders size={14} className="text-primary" />
-                        <span>Audio Delay (Sync Correction)</span>
-                      </div>
-                      <span className="font-mono text-xs text-primary font-bold">{audioDelay.toFixed(1)}s</span>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        className="px-2.5 py-1.5 rounded-lg bg-surface-muted hover:bg-surface text-foreground text-xs font-semibold transition border-none cursor-pointer"
-                        onClick={() => handleAudioDelayChange(-0.5)}
-                      >
-                        -0.5s
-                      </button>
-                      <button
-                        type="button"
-                        className="px-2.5 py-1.5 rounded-lg bg-surface-muted hover:bg-surface text-foreground text-xs font-semibold transition border-none cursor-pointer"
-                        onClick={() => handleAudioDelayChange(-0.1)}
-                      >
-                        -0.1s
-                      </button>
-                      <button
-                        type="button"
-                        className="flex-1 py-1.5 rounded-lg bg-surface-muted hover:bg-surface text-foreground text-xs font-semibold transition border-none cursor-pointer"
-                        onClick={async () => {
-                          setAudioDelay(0);
-                          if (window.nosvedAPI?.setAudioDelay) {
-                            await window.nosvedAPI.setAudioDelay(0);
-                          }
-                        }}
-                      >
-                        Reset (0.0s)
-                      </button>
-                      <button
-                        type="button"
-                        className="px-2.5 py-1.5 rounded-lg bg-surface-muted hover:bg-surface text-foreground text-xs font-semibold transition border-none cursor-pointer"
-                        onClick={() => handleAudioDelayChange(0.1)}
-                      >
-                        +0.1s
-                      </button>
-                      <button
-                        type="button"
-                        className="px-2.5 py-1.5 rounded-lg bg-surface-muted hover:bg-surface text-foreground text-xs font-semibold transition border-none cursor-pointer"
-                        onClick={() => handleAudioDelayChange(0.5)}
-                      >
-                        +0.5s
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {activeTab === 'subtitles' && (
-                <div className="flex flex-col gap-4">
-                  {/* Master Subtitles Toggle */}
-                  <div className="flex items-center justify-between p-4 bg-surface border border-border rounded-2xl">
-                    <div className="flex flex-col gap-0.5">
-                      <span className="text-xs font-bold text-foreground">Subtitle Display</span>
-                      <span className="text-[11px] text-muted-foreground">Show or hide rendered on-screen subtitles</span>
-                    </div>
-
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={tracks?.subtitlesVisible}
-                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors border-none cursor-pointer ${
-                        tracks?.subtitlesVisible ? 'bg-primary' : 'bg-surface-muted'
-                      }`}
-                      onClick={() => handleToggleSubtitlesVisible(!tracks?.subtitlesVisible)}
-                    >
-                      <span
-                        className={`inline-block h-4 w-4 transform rounded-full bg-surface shadow-sm transition-transform ${
-                          tracks?.subtitlesVisible ? 'translate-x-6' : 'translate-x-1'
-                        }`}
-                      />
-                    </button>
-                  </div>
-
-                  {/* Subtitle Tracks List */}
-                  <div className="flex flex-col gap-1.5">
-                    <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
-                      Available Subtitle Tracks
-                    </span>
-
-                    <div className="flex flex-col gap-2 mt-1">
-                      {/* Off Option */}
-                      <button
-                        type="button"
-                        className={`flex items-center justify-between p-3.5 rounded-2xl cursor-pointer transition border text-left w-full ${
-                          !tracks?.subtitlesVisible || tracks?.selectedSubtitleId === 'no'
-                            ? 'bg-primary-container text-on-primary-container border-primary shadow-sm'
-                            : 'bg-surface border-border hover:bg-surface-muted text-foreground'
-                        }`}
-                        onClick={() => handleSelectSubtitleTrack('no')}
-                      >
-                        <div className="flex items-center gap-3">
-                          <div
-                            className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 ${
-                              !tracks?.subtitlesVisible || tracks?.selectedSubtitleId === 'no'
-                                ? 'bg-primary text-primary-foreground shadow'
-                                : 'border border-border text-transparent'
-                            }`}
-                          >
-                            <Check size={13} />
-                          </div>
-                          <div>
-                            <span className="text-xs font-bold">Off (Disable Subtitles)</span>
-                            <p className="text-[11px] text-muted-foreground mt-0.5">Do not render any subtitles</p>
-                          </div>
-                        </div>
-                      </button>
-
-                      {tracks && tracks.subtitleTracks.length > 0 ? (
-                        tracks.subtitleTracks.map((tr) => {
-                          const isSelected =
-                            Boolean(tracks.subtitlesVisible) &&
-                            (String(tracks.selectedSubtitleId) === String(tr.id) ||
-                              (tr.selected && tracks.selectedSubtitleId !== 'no'));
-                          return (
-                            <button
-                              key={tr.id}
-                              type="button"
-                              className={`flex items-center justify-between p-3.5 rounded-2xl cursor-pointer transition border text-left w-full ${
-                                isSelected
-                                  ? 'bg-primary-container text-on-primary-container border-primary shadow-sm'
-                                  : 'bg-surface border-border hover:bg-surface-muted text-foreground'
-                              }`}
-                              onClick={() => handleSelectSubtitleTrack(tr.id)}
-                            >
-                              <div className="flex items-center gap-3 min-w-0">
-                                <div
-                                  className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 ${
-                                    isSelected
-                                      ? 'bg-primary text-primary-foreground shadow'
-                                      : 'border border-border text-transparent'
-                                  }`}
-                                >
-                                  <Check size={13} />
-                                </div>
-                                <div className="flex flex-col truncate">
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-xs font-bold truncate">
-                                      Track {tr.id}: {tr.title || tr.lang || `Subtitle Stream ${tr.id}`}
-                                    </span>
-                                    {isSelected && (
-                                      <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-primary text-primary-foreground">
-                                        Active
-                                      </span>
-                                    )}
-                                  </div>
-                                  <div className="flex items-center gap-2 mt-0.5 text-[11px] opacity-80 font-mono">
-                                    {tr.lang && <span>Language: {tr.lang.toUpperCase()}</span>}
-                                    {tr.codec && <span>• Format: {tr.codec.toUpperCase()}</span>}
-                                    {tr.isDefault && <span className="text-primary font-bold">• Default</span>}
-                                  </div>
-                                </div>
-                              </div>
-                            </button>
-                          );
-                        })
-                      ) : (
-                        <div className="p-4 text-center text-muted-foreground text-xs bg-surface border border-border rounded-2xl">
-                          No embedded subtitles found inside media container.
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Load External Subtitles Button */}
-                  <button
-                    type="button"
-                    className="flex items-center justify-center gap-2 p-3.5 rounded-2xl bg-surface hover:bg-surface-muted text-primary font-bold text-xs border border-primary/30 transition cursor-pointer"
-                    onClick={handleLoadExternalSubtitle}
-                  >
-                    <FileText size={16} />
-                    <span>Load External Subtitle File (.srt, .vtt, .ass)...</span>
-                  </button>
-
-                  {/* Subtitle Delay Adjuster */}
-                  <div className="p-4 bg-surface border border-border rounded-2xl flex flex-col gap-2.5">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
-                        <Sliders size={14} className="text-primary" />
-                        <span>Subtitle Delay (Timing Correction)</span>
-                      </div>
-                      <span className="font-mono text-xs text-primary font-bold">{subtitleDelay.toFixed(1)}s</span>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        className="px-2.5 py-1.5 rounded-lg bg-surface-muted hover:bg-surface text-foreground text-xs font-semibold transition border-none cursor-pointer"
-                        onClick={() => handleSubtitleDelayChange(-0.5)}
-                      >
-                        -0.5s
-                      </button>
-                      <button
-                        type="button"
-                        className="px-2.5 py-1.5 rounded-lg bg-surface-muted hover:bg-surface text-foreground text-xs font-semibold transition border-none cursor-pointer"
-                        onClick={() => handleSubtitleDelayChange(-0.1)}
-                      >
-                        -0.1s
-                      </button>
-                      <button
-                        type="button"
-                        className="flex-1 py-1.5 rounded-lg bg-surface-muted hover:bg-surface text-foreground text-xs font-semibold transition border-none cursor-pointer"
-                        onClick={async () => {
-                          setSubtitleDelay(0);
-                          if (window.nosvedAPI?.setSubtitleDelay) {
-                            await window.nosvedAPI.setSubtitleDelay(0);
-                          }
-                        }}
-                      >
-                        Reset (0.0s)
-                      </button>
-                      <button
-                        type="button"
-                        className="px-2.5 py-1.5 rounded-lg bg-surface-muted hover:bg-surface text-foreground text-xs font-semibold transition border-none cursor-pointer"
-                        onClick={() => handleSubtitleDelayChange(0.1)}
-                      >
-                        +0.1s
-                      </button>
-                      <button
-                        type="button"
-                        className="px-2.5 py-1.5 rounded-lg bg-surface-muted hover:bg-surface text-foreground text-xs font-semibold transition border-none cursor-pointer"
-                        onClick={() => handleSubtitleDelayChange(0.5)}
-                      >
-                        +0.5s
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Modal Footer */}
-            <div className="px-6 py-4 border-t border-border bg-surface flex justify-end">
-              <button
-                type="button"
-                className="px-5 py-2 rounded-xl bg-primary text-primary-foreground font-semibold text-xs shadow hover:scale-[1.02] active:scale-[0.98] transition cursor-pointer border-none"
-                onClick={() => setModalOpen(false)}
-              >
-                Done
-              </button>
             </div>
           </div>
         </div>

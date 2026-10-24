@@ -256,6 +256,26 @@ export function registerPlayerHandlers(ctx: PlayerHandlerContext): void {
     return ctx.playerService.setSubtitleDelay(seconds);
   });
 
+  ipcMain.handle('player:set-subtitle-font-size', async (event, size: unknown) => {
+    if (!validateIpcSender(event, ctx.getMainWindow(), ctx.isDev)) {
+      throw new Error('Unauthorized IPC invocation: Sender validation failed');
+    }
+    if (typeof size !== 'number' || !Number.isFinite(size) || size <= 0) {
+      throw new Error('Invalid argument: Font size must be a positive finite number');
+    }
+    return ctx.playerService.setSubtitleFontSize(size);
+  });
+
+  ipcMain.handle('player:set-subtitle-color', async (event, color: unknown) => {
+    if (!validateIpcSender(event, ctx.getMainWindow(), ctx.isDev)) {
+      throw new Error('Unauthorized IPC invocation: Sender validation failed');
+    }
+    if (typeof color !== 'string' || !color.trim()) {
+      throw new Error('Invalid argument: Color must be a non-empty string');
+    }
+    return ctx.playerService.setSubtitleColor(color.trim());
+  });
+
   ipcMain.handle('player:set-audio-delay', async (event, seconds: unknown) => {
     if (!validateIpcSender(event, ctx.getMainWindow(), ctx.isDev)) {
       throw new Error('Unauthorized IPC invocation: Sender validation failed');

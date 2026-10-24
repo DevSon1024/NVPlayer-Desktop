@@ -88,6 +88,8 @@ export const App: React.FC = () => {
     },
   });
 
+  const [modalDock, setModalDock] = useState<'right' | 'left'>('right');
+
   const {
     isAppFullscreen,
     isPlayerFullscreen,
@@ -109,6 +111,7 @@ export const App: React.FC = () => {
     playbackStatus,
     isScrubbing,
     isTrackModalOpen,
+    modalDock,
     resumePrompt,
   });
 
@@ -387,6 +390,8 @@ export const App: React.FC = () => {
               scrubPosition={scrubPosition}
               isTrackModalOpen={isTrackModalOpen}
               onTrackModalOpenChange={setIsTrackModalOpen}
+              modalDock={modalDock}
+              onToggleModalDock={() => setModalDock((prev) => (prev === 'right' ? 'left' : 'right'))}
               onNavigateBack={() => {
                 if (isPlayerFullscreen) {
                   handleExitPlayerFullscreen();
@@ -416,6 +421,8 @@ export const App: React.FC = () => {
               onFrameBackStep={handleFrameBackStep}
               onCaptureFrame={handleCaptureFrame}
               onSetSpeed={handleSetSpeed}
+              settings={settings}
+              onUpdateSetting={handleUpdateSetting}
             />
           )}
 
