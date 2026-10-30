@@ -2,6 +2,7 @@ import { ipcMain, BrowserWindow } from 'electron';
 import { validateIpcSender } from './ipc-validator';
 import type { NativeVideoWindow } from '../native/video-window';
 import { applyNativeTitleBarTheme } from '../native/title-bar';
+import { startFullscreenActivityTracker, stopFullscreenActivityTracker } from '../services/fullscreen-tracker';
 
 export interface WindowHandlerContext {
   getMainWindow: () => BrowserWindow | null;
@@ -18,6 +19,11 @@ export function registerWindowHandlers(ctx: WindowHandlerContext): void {
     if (!mainWindow) return false;
     const nextState = !mainWindow.isFullScreen();
     mainWindow.setFullScreen(nextState);
+    if (nextState) {
+      startFullscreenActivityTracker(ctx.getMainWindow);
+    } else {
+      stopFullscreenActivityTracker();
+    }
     return nextState;
   });
 
@@ -31,6 +37,11 @@ export function registerWindowHandlers(ctx: WindowHandlerContext): void {
     }
     if (!mainWindow) return false;
     mainWindow.setFullScreen(fullscreen);
+    if (fullscreen) {
+      startFullscreenActivityTracker(ctx.getMainWindow);
+    } else {
+      stopFullscreenActivityTracker();
+    }
     return fullscreen;
   });
 

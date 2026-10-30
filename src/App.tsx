@@ -113,6 +113,7 @@ export const App: React.FC = () => {
     isTrackModalOpen,
     modalDock,
     resumePrompt,
+    hideControlsTimeoutMs: settings.hideControlsTimeoutMs,
   });
 
   const {
@@ -182,10 +183,11 @@ export const App: React.FC = () => {
 
       if (e.key === 'F11') {
         e.preventDefault();
-        if (isPlayerFullscreen) {
-          setIsPlayerFullscreen(false);
+        if (activeTab === 'player' || isPlayerFullscreen) {
+          triggerPlayerFullscreenToggle();
+        } else {
+          handleToggleAppFullscreen();
         }
-        handleToggleAppFullscreen();
       } else if (e.code === FULLSCREEN_SHORTCUT_KEY && !e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey) {
         if (activeTab === 'player' || isPlayerFullscreen || Boolean(playbackStatus.currentFile && playbackStatus.mediaState !== 'idle')) {
           e.preventDefault();
@@ -196,7 +198,7 @@ export const App: React.FC = () => {
           e.preventDefault();
           if (resumePrompt) {
             setResumePrompt(null);
-          } else if (isPlayerFullscreen) {
+          } else if (isPlayerFullscreen || (isAppFullscreen && activeTab === 'player')) {
             handleExitPlayerFullscreen();
           } else {
             setActiveTab(previousTab || 'home');
@@ -209,7 +211,7 @@ export const App: React.FC = () => {
         } else if (isTrackModalOpen) {
           e.preventDefault();
           setIsTrackModalOpen(false);
-        } else if (isPlayerFullscreen) {
+        } else if (isPlayerFullscreen || (isAppFullscreen && activeTab === 'player')) {
           e.preventDefault();
           handleExitPlayerFullscreen();
         } else if (isAppFullscreen) {
@@ -295,6 +297,7 @@ export const App: React.FC = () => {
   ]);
 
   const isDesktopBridge = typeof window !== 'undefined' && typeof window.nosvedAPI !== 'undefined';
+  const isFullscreenMode = isPlayerFullscreen || (isAppFullscreen && activeTab === 'player');
 
   const currentPlayingItem =
     recentItems.find((it) => it.filePath === playbackStatus.currentFile) ||
@@ -306,11 +309,11 @@ export const App: React.FC = () => {
 
   return (
     <div
-      className={`flex h-full w-full bg-background select-none app-layout ${isPlayerFullscreen ? 'player-fullscreen-active bg-black border-none' : ''}`}
+      className={`flex h-full w-full bg-background select-none app-layout ${isFullscreenMode ? 'player-fullscreen-active bg-black border-none' : ''}`}
       onMouseMove={resetInactivityTimer}
     >
       {/* Navigation Rail / Sidebar: Hidden in Now Playing view and in Player Fullscreen */}
-      {!isPlayerFullscreen && activeTab !== 'player' && (
+      {!isFullscreenMode && activeTab !== 'player' && (
         <Navbar
           activeTab={activeTab}
           onSelectTab={handleNavigateTab}
@@ -320,9 +323,9 @@ export const App: React.FC = () => {
       )}
 
       {/* Main Viewport Content */}
-      <main className={`flex-1 flex flex-col h-full overflow-hidden bg-background main-viewport ${isPlayerFullscreen ? 'player-fullscreen-mode bg-black border-none' : ''}`}>
+      <main className={`flex-1 flex flex-col h-full overflow-hidden bg-background main-viewport ${isFullscreenMode ? 'player-fullscreen-mode bg-black border-none' : ''}`}>
         {/* Viewport Top Header: Only shown on Now Playing screen; hidden on all dashboard workspaces */}
-        {!isPlayerFullscreen && activeTab === 'player' && (
+        {!isFullscreenMode && activeTab === 'player' && (
           <header className="flex items-center justify-between border-b border-border bg-surface/85 backdrop-blur-xl sticky top-0 z-10 viewport-header h-12 min-h-12 px-5 transition-all text-foreground">
             <div className="flex items-center gap-3 min-w-0">
               <button
@@ -362,9 +365,9 @@ export const App: React.FC = () => {
           </header>
         )}
 
-        <section className={`viewport-body flex-1 min-h-0 w-full flex flex-col overflow-hidden relative ${isPlayerFullscreen ? 'p-0 m-0 max-w-none bg-black border-none' : ''}`}>
+        <section className={`viewport-body flex-1 min-h-0 w-full flex flex-col overflow-hidden relative ${isFullscreenMode ? 'p-0 m-0 max-w-none bg-black border-none' : ''}`}>
           {/* Tab Content: Home Landing View */}
-          {activeTab === 'home' && !isPlayerFullscreen && (
+          {activeTab === 'home' && !isFullscreenMode && (
             <HomeView
               recentItems={recentItems}
               libraryItems={libraryItems}
@@ -377,14 +380,15 @@ export const App: React.FC = () => {
           )}
 
           {/* Tab Content: Now Playing View */}
-          {((activeTab === 'player' && Boolean(playbackStatus.currentFile && playbackStatus.mediaState !== 'idle')) || isPlayerFullscreen) && (
+          {((activeTab === 'player' && Boolean(playbackStatus.currentFile && playbackStatus.mediaState !== 'idle')) || isFullscreenMode) && (
             <PlayerView
               videoViewportRef={videoViewportRef}
               playbackStatus={playbackStatus}
               activePlaylist={activePlaylist}
               resumePrompt={resumePrompt}
-              isFullscreen={isPlayerFullscreen}
+              isFullscreen={isFullscreenMode}
               showOverlay={showOverlay}
+              onUserActivity={resetInactivityTimer}
               isDesktopBridge={isDesktopBridge}
               isScrubbing={isScrubbing}
               scrubPosition={scrubPosition}
@@ -393,7 +397,7 @@ export const App: React.FC = () => {
               modalDock={modalDock}
               onToggleModalDock={() => setModalDock((prev) => (prev === 'right' ? 'left' : 'right'))}
               onNavigateBack={() => {
-                if (isPlayerFullscreen) {
+                if (isFullscreenMode) {
                   handleExitPlayerFullscreen();
                 }
                 setActiveTab(previousTab || 'home');
@@ -427,7 +431,7 @@ export const App: React.FC = () => {
           )}
 
           {/* Tab Content: Media Library View */}
-          {activeTab === 'library' && !isPlayerFullscreen && (
+          {activeTab === 'library' && !isFullscreenMode && (
             <LibraryView
               libraryItems={libraryItems}
               showThumbnails={settings.showThumbnails}
@@ -444,7 +448,7 @@ export const App: React.FC = () => {
           )}
 
           {/* Tab Content: Playlists View */}
-          {activeTab === 'playlists' && !isPlayerFullscreen && (
+          {activeTab === 'playlists' && !isFullscreenMode && (
             <PlaylistsView
               playlists={playlists}
               selectedPlaylistId={selectedPlaylistId}
@@ -474,7 +478,7 @@ export const App: React.FC = () => {
           )}
 
           {/* Tab Content: Recent Playback View */}
-          {activeTab === 'recent' && !isPlayerFullscreen && (
+          {activeTab === 'recent' && !isFullscreenMode && (
             <RecentView
               recentItems={recentItems}
               showThumbnails={settings.showThumbnails}
@@ -484,7 +488,7 @@ export const App: React.FC = () => {
           )}
 
           {/* Tab Content: System Settings / Diagnostics View */}
-          {activeTab === 'settings' && !isPlayerFullscreen && (
+          {activeTab === 'settings' && !isFullscreenMode && (
             <SettingsView
               settings={settings}
               onUpdateSetting={handleUpdateSetting}

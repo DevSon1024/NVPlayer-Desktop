@@ -10,6 +10,7 @@ interface UseFullscreenProps {
   isTrackModalOpen: boolean;
   modalDock?: 'right' | 'left';
   resumePrompt: ResumePromptState | null;
+  hideControlsTimeoutMs?: number;
 }
 
 export function useFullscreen({
@@ -20,6 +21,7 @@ export function useFullscreen({
   isTrackModalOpen,
   modalDock,
   resumePrompt,
+  hideControlsTimeoutMs = 3000,
 }: UseFullscreenProps) {
   const [isAppFullscreen, setIsAppFullscreen] = useState(false);
   const [isPlayerFullscreen, setIsPlayerFullscreen] = useState(false);
@@ -31,6 +33,13 @@ export function useFullscreen({
   const isScrubbingRef = useRef(isScrubbing);
   const playbackStatusRef = useRef(playbackStatus);
   const isPlayerFullscreenRef = useRef(isPlayerFullscreen);
+  const isAppFullscreenRef = useRef(isAppFullscreen);
+  const activeTabRef = useRef(activeTab);
+  const hideControlsTimeoutMsRef = useRef(hideControlsTimeoutMs);
+
+  useEffect(() => {
+    hideControlsTimeoutMsRef.current = hideControlsTimeoutMs;
+  }, [hideControlsTimeoutMs]);
 
   useEffect(() => {
     isScrubbingRef.current = isScrubbing;
@@ -43,6 +52,14 @@ export function useFullscreen({
   useEffect(() => {
     isPlayerFullscreenRef.current = isPlayerFullscreen;
   }, [isPlayerFullscreen]);
+
+  useEffect(() => {
+    isAppFullscreenRef.current = isAppFullscreen;
+  }, [isAppFullscreen]);
+
+  useEffect(() => {
+    activeTabRef.current = activeTab;
+  }, [activeTab]);
 
   const [videoViewportEl, setVideoViewportEl] = useState<HTMLDivElement | null>(null);
   const videoViewportRef = useCallback((node: HTMLDivElement | null) => {
@@ -143,49 +160,58 @@ export function useFullscreen({
     isTrackModalOpenRef.current = isTrackModalOpen;
   }, [isTrackModalOpen]);
 
-  // Fullscreen auto-hide timer management (2.5-second timeout on inactivity during active playback)
+  const isAnyFullscreen = isPlayerFullscreen || (isAppFullscreen && activeTab === 'player');
+  const isAnyFullscreenRef = useRef(isAnyFullscreen);
+  useEffect(() => {
+    isAnyFullscreenRef.current = isAnyFullscreen;
+  }, [isAnyFullscreen]);
+
+  // Fullscreen auto-hide timer management on inactivity during active playback
   const resetInactivityTimer = useCallback(() => {
     if (inactivityTimerRef.current) {
       clearTimeout(inactivityTimerRef.current);
       inactivityTimerRef.current = null;
     }
 
-    if (isPlayerFullscreenRef.current) {
+    setShowOverlay(true);
+
+    if (isAnyFullscreenRef.current) {
       const status = playbackStatusRef.current;
       // Keep controls visible when paused, ended, or when track/subtitle modal is open
       if (status.paused || status.mediaState === 'paused' || status.mediaState === 'ended' || isTrackModalOpenRef.current) {
-        setShowOverlay(true);
         return;
       }
-      setShowOverlay(true);
+      const timeout = hideControlsTimeoutMsRef.current || 3000;
       inactivityTimerRef.current = setTimeout(() => {
-        if (!isScrubbingRef.current && !isInteractingWithControlsRef.current && !isControlsFocusedRef.current && !isTrackModalOpenRef.current) {
+        if (!isScrubbingRef.current && !isInteractingWithControlsRef.current && !isTrackModalOpenRef.current) {
           setShowOverlay(false);
         }
-      }, 2500);
-    } else {
-      setShowOverlay(true);
+      }, timeout);
     }
   }, []);
 
-  const prevPausedRef = useRef(playbackStatus.paused);
+  // Listen for mouse movements, pointer actions, clicks, and touches to awaken controls in fullscreen
   useEffect(() => {
-    const wasPaused = prevPausedRef.current;
-    prevPausedRef.current = playbackStatus.paused;
-
-    if (isPlayerFullscreen) {
-      const isPlaying = !playbackStatus.paused && playbackStatus.mediaState !== 'paused' && playbackStatus.mediaState !== 'ended';
-      if (isPlaying && wasPaused && !isTrackModalOpen) {
-        // Hide controls immediately on active playback resume only if track modal is closed
-        if (inactivityTimerRef.current) {
-          clearTimeout(inactivityTimerRef.current);
-          inactivityTimerRef.current = null;
-        }
-        setShowOverlay(false);
-      } else if (!isPlaying || isTrackModalOpen) {
-        // Keep controls visible when paused or track modal is open
-        setShowOverlay(true);
+    const handleActivity = () => {
+      if (isAnyFullscreenRef.current) {
+        resetInactivityTimer();
       }
+    };
+    window.addEventListener('mousemove', handleActivity, { passive: true });
+    window.addEventListener('pointermove', handleActivity, { passive: true });
+    window.addEventListener('mousedown', handleActivity, { passive: true });
+    window.addEventListener('touchstart', handleActivity, { passive: true });
+    return () => {
+      window.removeEventListener('mousemove', handleActivity);
+      window.removeEventListener('pointermove', handleActivity);
+      window.removeEventListener('mousedown', handleActivity);
+      window.removeEventListener('touchstart', handleActivity);
+    };
+  }, [resetInactivityTimer]);
+
+  useEffect(() => {
+    if (isAnyFullscreen) {
+      resetInactivityTimer();
     } else {
       if (inactivityTimerRef.current) {
         clearTimeout(inactivityTimerRef.current);
@@ -199,7 +225,7 @@ export function useFullscreen({
         inactivityTimerRef.current = null;
       }
     };
-  }, [isPlayerFullscreen, playbackStatus.paused, playbackStatus.mediaState, isScrubbing, resetInactivityTimer]);
+  }, [isAnyFullscreen, playbackStatus.paused, playbackStatus.mediaState, isTrackModalOpen, resetInactivityTimer]);
 
   // Player Fullscreen Cinema Mode Toggling
   const handleTogglePlayerFullscreen = useCallback(async () => {
@@ -207,16 +233,7 @@ export function useFullscreen({
     setIsPlayerFullscreen(next);
     if (next) {
       setActiveTab('player');
-      // When entering fullscreen while video is playing, show zero controls
-      const isPlaying =
-        !playbackStatusRef.current.paused &&
-        playbackStatusRef.current.mediaState !== 'paused' &&
-        playbackStatusRef.current.mediaState !== 'ended';
-      setShowOverlay(!isPlaying);
-      if (inactivityTimerRef.current) {
-        clearTimeout(inactivityTimerRef.current);
-        inactivityTimerRef.current = null;
-      }
+      resetInactivityTimer();
       if (window.nosvedAPI?.setFullscreen) {
         await window.nosvedAPI.setFullscreen(true).catch(console.error);
       }
@@ -230,7 +247,7 @@ export function useFullscreen({
         await window.nosvedAPI.setFullscreen(false).catch(console.error);
       }
     }
-  }, [isPlayerFullscreen, setActiveTab]);
+  }, [isPlayerFullscreen, setActiveTab, resetInactivityTimer]);
 
   const handleExitPlayerFullscreen = useCallback(async () => {
     setIsPlayerFullscreen(false);
@@ -311,9 +328,14 @@ export function useFullscreen({
       cleanups.push(
         window.nosvedAPI.onFullscreenChange((fs) => {
           setIsAppFullscreen(fs);
-          if (!fs) {
+          if (fs) {
+            if (activeTabRef.current === 'player' || Boolean(playbackStatusRef.current.currentFile && playbackStatusRef.current.mediaState !== 'idle')) {
+              setIsPlayerFullscreen(true);
+            }
+          } else {
             setIsPlayerFullscreen(false);
           }
+          resetInactivityTimer();
         })
       );
     }

@@ -23,10 +23,10 @@ export function startFullscreenActivityTracker(getMainWindow: () => BrowserWindo
         lastCursorPos = current;
         const bounds = mainWindow.getBounds();
         const isInside =
-          current.x >= bounds.x &&
-          current.x <= bounds.x + bounds.width &&
-          current.y >= bounds.y &&
-          current.y <= bounds.y + bounds.height;
+          current.x >= bounds.x - 20 &&
+          current.x <= bounds.x + bounds.width + 20 &&
+          current.y >= bounds.y - 20 &&
+          current.y <= bounds.y + bounds.height + 20;
         if (isInside) {
           mainWindow.webContents.send('window:user-active');
         }
@@ -34,7 +34,7 @@ export function startFullscreenActivityTracker(getMainWindow: () => BrowserWindo
     } catch {
       // Screen query may fail if displays change
     }
-  }, 150);
+  }, 100);
   fullscreenActivityTimer.unref();
 }
 

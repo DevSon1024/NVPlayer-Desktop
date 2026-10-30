@@ -7,6 +7,7 @@ import {
   VolumeX,
   AlertCircle,
   RotateCcw,
+  Repeat,
   X,
   Maximize2,
   Minimize2,
@@ -15,7 +16,6 @@ import {
   SkipForward,
   Headphones,
   Subtitles,
-  ArrowLeft,
   Camera,
 } from 'lucide-react';
 import type { PlaybackStatus, PlaylistItem, PlayerTracksSnapshot } from '../types/electron';
@@ -24,6 +24,7 @@ import { formatTime } from '../utils/formatters';
 import { M3GappedScrubber } from './M3GappedScrubber';
 import { FrameCaptureModal } from './FrameCaptureModal';
 import { AudioSubtitleModal, TrackModalTab } from './modals/AudioSubtitleModal';
+import { FullscreenFloatingIsland } from './FullscreenFloatingIsland';
 
 export interface ActivePlaylistState {
   playlistId: string;
@@ -76,18 +77,12 @@ export interface PlayerViewProps {
   onFrameBackStep?: () => void;
   onCaptureFrame?: (customDir?: string) => Promise<{ success: boolean; filePath?: string; frameNumber?: number; error?: string }>;
   onSetSpeed?: (speed: number) => void;
+  onUserActivity?: () => void;
   settings?: AppSettings;
   onUpdateSetting?: <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => Promise<void> | void;
 }
 
 const SPEED_STEPS = [0.5, 1.0, 1.25, 1.5, 2.0];
-
-const formatCleanTitle = (filePath: string | null): string => {
-  if (!filePath) return '';
-  const fileName = filePath.split(/[/\\]/).pop() || filePath;
-  const nameWithoutExt = fileName.replace(/\.[^/.]+$/, '');
-  return nameWithoutExt.replace(/[._]/g, ' ');
-};
 
 
 
@@ -127,6 +122,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
   onFrameBackStep,
   onCaptureFrame,
   onSetSpeed,
+  onUserActivity,
   settings,
   onUpdateSetting,
 }) => {
@@ -159,6 +155,13 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
 
   const [audioDelay, setAudioDelay] = useState(0);
   const [subtitleDelay, setSubtitleDelay] = useState(0);
+  const [isIslandMoreOpen, setIsIslandMoreOpen] = useState(false);
+
+  useEffect(() => {
+    if (!showOverlay) {
+      setIsIslandMoreOpen(false);
+    }
+  }, [showOverlay]);
 
   // Immediate native bounds synchronization whenever modal dock or open state changes
   useEffect(() => {
@@ -189,7 +192,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
       return () => cancelAnimationFrame(raf2);
     });
     return () => cancelAnimationFrame(raf1);
-  }, [modalDock, isTrackModalOpen]);
+  }, [modalDock, isTrackModalOpen, isFullscreen]);
 
   // Sync subtitle settings to native libmpv whenever settings or file changes
   useEffect(() => {
@@ -203,7 +206,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
 
   // On-Screen Display (OSD) HUD State & Trigger
   interface OsdState {
-    type: 'volume' | 'seek' | 'play' | 'pause' | 'mute' | 'double_tap_left' | 'double_tap_right';
+    type: 'volume' | 'seek' | 'play' | 'pause' | 'mute' | 'double_tap_left' | 'double_tap_right' | 'generic';
     value?: string | number;
     subValue?: string;
   }
@@ -217,6 +220,28 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
       setOsd(null);
     }, durationMs);
   }, []);
+
+  // Loop playback state
+  const [isLooping, setIsLooping] = useState(false);
+  const handleToggleLoop = useCallback(() => {
+    setIsLooping((prev) => {
+      const next = !prev;
+      triggerOsd({
+        type: 'generic',
+        value: next ? 'Loop: On' : 'Loop: Off',
+      });
+      return next;
+    });
+  }, [triggerOsd]);
+
+  useEffect(() => {
+    if (isLooping && playbackStatus.mediaState === 'ended') {
+      onCommitSeek(0);
+      if (playbackStatus.paused) {
+        onTogglePlayPause();
+      }
+    }
+  }, [isLooping, playbackStatus.mediaState, playbackStatus.paused, onCommitSeek, onTogglePlayPause]);
 
   // Frame Capture Modal State
   const [isFrameCaptureOpen, setIsFrameCaptureOpen] = useState(false);
@@ -296,6 +321,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    onUserActivity?.();
     if (!dragStartRef.current) return;
     const deltaX = e.clientX - dragStartRef.current.x;
     const deltaY = dragStartRef.current.y - e.clientY;
@@ -383,15 +409,10 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
         onTriggerFullscreenToggle();
       }
     } else {
+      // Double-click detection window without triggering single-click pause
       clickTimerRef.current = setTimeout(() => {
         clickTimerRef.current = null;
-        if (playbackStatus.currentFile && playbackStatus.mediaState !== 'loading') {
-          onTogglePlayPause();
-          triggerOsd({
-            type: playbackStatus.paused ? 'play' : 'pause',
-          });
-        }
-      }, 230);
+      }, 250);
     }
   };
 
@@ -715,73 +736,8 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
             }`
           : 'w-full flex-1 min-h-0 h-full flex flex-col p-2 gap-2 overflow-hidden select-none bg-background'
       }
+      onMouseMove={onUserActivity}
     >
-      {/* Fullscreen Floating Top Header Bar (Vanishes completely while watching video) */}
-      {isFullscreen && (
-        <div
-          className={`fixed top-0 inset-x-0 h-14 px-6 flex items-center justify-between z-40 bg-surface/90 backdrop-blur-xl border-b border-border text-foreground transition-all duration-300 ${
-            showOverlay && !isFrameCaptureOpen ? 'opacity-100 translate-y-0 pointer-events-auto' : 'opacity-0 -translate-y-full pointer-events-none'
-          }`}
-          onClick={(e) => e.stopPropagation()}
-          onDoubleClick={(e) => e.stopPropagation()}
-          onMouseEnter={onControlsMouseEnter}
-          onMouseLeave={onControlsMouseLeave}
-          onFocus={onControlsFocus}
-          onBlur={onControlsBlur}
-        >
-          <div className="flex items-center gap-3 min-w-0">
-            <button
-              type="button"
-              className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-surface-muted hover:bg-surface-elevated text-foreground border border-border text-xs font-semibold backdrop-blur-md transition cursor-pointer shrink-0"
-              onClick={(e) => {
-                e.stopPropagation();
-                onTriggerFullscreenToggle();
-              }}
-              title="Exit Fullscreen (F or Esc)"
-              aria-label="Exit Fullscreen"
-            >
-              <ArrowLeft size={15} />
-              <span>Exit Fullscreen</span>
-            </button>
-
-            {playbackStatus.currentFile && (
-              <span className="text-sm font-semibold text-foreground truncate max-w-md">
-                {formatCleanTitle(playbackStatus.currentFile)}
-              </span>
-            )}
-          </div>
-
-          {/* Technical Metadata Capsule Group */}
-          <div className="flex items-center gap-2 shrink-0">
-            {playbackStatus.videoWidth && playbackStatus.videoHeight && (
-              <span className="bg-surface-muted text-primary border border-primary/30 rounded-full px-2.5 py-0.5 text-xs font-mono font-medium">
-                {playbackStatus.videoWidth}x{playbackStatus.videoHeight}
-              </span>
-            )}
-            {playbackStatus.fps && playbackStatus.fps > 0 && (
-              <span className="bg-surface-muted text-primary border border-primary/30 rounded-full px-2.5 py-0.5 text-xs font-mono font-medium">
-                {Math.round(playbackStatus.fps)} FPS
-              </span>
-            )}
-            <span className="bg-primary/15 text-primary border border-primary/30 rounded-full px-2.5 py-0.5 text-xs font-bold">
-              {playbackStatus.hwdec && playbackStatus.hwdec !== 'no' ? playbackStatus.hwdec.toUpperCase() : 'HW'}
-            </span>
-
-            <button
-              type="button"
-              className="p-1.5 rounded-full bg-surface-muted hover:bg-surface-elevated text-foreground border border-border transition cursor-pointer ml-1"
-              onClick={(e) => {
-                e.stopPropagation();
-                onTriggerFullscreenToggle();
-              }}
-              title="Exit Fullscreen (F or Esc)"
-              aria-label="Exit Fullscreen"
-            >
-              <Minimize2 size={15} />
-            </button>
-          </div>
-        </div>
-      )}
 
       {!isDesktopBridge && !isFullscreen && (
         <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-500 text-xs flex items-center gap-2 shrink-0" role="alert">
@@ -895,14 +851,17 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
         <div
           className={
             isFullscreen
-              ? 'player-container fullscreen-player-container flex-1 min-h-0 h-full relative bg-black overflow-hidden select-none cursor-pointer'
-              : 'player-container flex-1 min-h-0 h-full relative select-none bg-black rounded-xl border border-border/60 overflow-hidden shadow-xl cursor-pointer'
+              ? `player-container fullscreen-player-container flex-1 min-h-0 h-full relative bg-black overflow-hidden select-none ${
+                  showOverlay ? 'cursor-default' : 'cursor-none'
+                }`
+              : 'player-container flex-1 min-h-0 h-full relative select-none bg-black rounded-xl border border-border/60 overflow-hidden shadow-xl cursor-default'
           }
         onClick={handleViewportClick}
         onWheel={handleViewportWheel}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
+        onMouseMove={onUserActivity}
       >
         <div
           id="nosved-video-viewport"
@@ -985,6 +944,13 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
                 <span className="text-xs font-semibold uppercase tracking-wider">{osd.value}</span>
               </div>
             )}
+
+            {osd.type === 'generic' && (
+              <div className="flex items-center gap-2.5 px-6 py-3 rounded-2xl bg-surface-elevated/90 backdrop-blur-md border border-border text-foreground shadow-2xl">
+                <Repeat size={20} className="text-primary" />
+                <span className="text-sm font-semibold">{osd.value}</span>
+              </div>
+            )}
           </div>
         )}
 
@@ -1057,18 +1023,47 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
         isFullscreen={isFullscreen}
       />
 
-      {/* Standard 2-Tier Bottom Control Deck (hidden while Frame Capture is open) */}
-      {!isFrameCaptureOpen && (
+      {/* Fullscreen Floating Island when in fullscreen */}
+      {!isFrameCaptureOpen && isFullscreen && (
+        <FullscreenFloatingIsland
+          playbackStatus={playbackStatus}
+          activePlaylist={activePlaylist}
+          currentPos={currentPos}
+          currentDuration={currentDuration}
+          currentSpeed={currentSpeed}
+          showOverlay={showOverlay}
+          selectedAudioTrack={selectedAudioTrack}
+          selectedSubTrack={selectedSubTrack}
+          onTogglePlayPause={onTogglePlayPause}
+          onCommitSeek={onCommitSeek}
+          onPlayNextPlaylistItem={onPlayNextPlaylistItem}
+          onPlayPrevPlaylistItem={onPlayPrevPlaylistItem}
+          onCycleSpeed={handleCycleSpeed}
+          onOpenTracksModal={(tab) => {
+            fetchTracks();
+            setActiveTab(tab);
+            setModalOpen(true);
+          }}
+          onTriggerFullscreenToggle={onTriggerFullscreenToggle}
+          onToggleLoop={handleToggleLoop}
+          isLooping={isLooping}
+          onVolumeChange={onVolumeChange}
+          onToggleMute={onToggleMute}
+          onOpenFile={onOpenFile}
+          onCaptureFrame={handleToggleFrameCapture}
+          onControlsMouseEnter={onControlsMouseEnter}
+          onControlsMouseLeave={onControlsMouseLeave}
+          onControlsFocus={onControlsFocus}
+          onControlsBlur={onControlsBlur}
+          isMoreMenuOpen={isIslandMoreOpen}
+          onToggleMoreMenu={() => setIsIslandMoreOpen((prev) => !prev)}
+        />
+      )}
+
+      {/* Standard 2-Tier Bottom Control Deck when in windowed mode (hidden while Frame Capture is open) */}
+      {!isFrameCaptureOpen && !isFullscreen && (
         <div
-          className={
-            isFullscreen
-              ? `fixed bottom-0 inset-x-0 z-40 bg-surface/90 backdrop-blur-xl border-t border-border p-4 shadow-2xl transition-all duration-300 text-foreground ${
-                  showOverlay
-                    ? 'opacity-100 translate-y-0 pointer-events-auto'
-                    : 'opacity-0 translate-y-full pointer-events-none'
-                }`
-              : 'w-full bg-surface/90 backdrop-blur-xl border border-border rounded-2xl p-4 shadow-xl shrink-0 z-30 transition-all text-foreground'
-          }
+          className="w-full bg-surface/90 backdrop-blur-xl border border-border rounded-2xl p-4 shadow-xl shrink-0 z-30 transition-all text-foreground"
           onClick={(e) => e.stopPropagation()}
           onDoubleClick={(e) => e.stopPropagation()}
           onTouchEnd={(e) => e.stopPropagation()}
