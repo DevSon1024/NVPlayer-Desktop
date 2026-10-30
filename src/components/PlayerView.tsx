@@ -1023,8 +1023,10 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
         isFullscreen={isFullscreen}
       />
 
-      {/* Fullscreen Floating Island when in fullscreen */}
-      {!isFrameCaptureOpen && isFullscreen && (
+      {/* Fullscreen Floating Island when in fullscreen: on Electron Desktop with native libmpv HWND,
+          the dedicated NativeOverlayWindow renders the island above the video HWND.
+          The in-DOM island is only rendered as a fallback when running in a standard browser. */}
+      {!isFrameCaptureOpen && isFullscreen && !window.nosvedAPI && (
         <FullscreenFloatingIsland
           playbackStatus={playbackStatus}
           activePlaylist={activePlaylist}

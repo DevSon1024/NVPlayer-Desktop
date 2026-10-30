@@ -1,7 +1,9 @@
-import { app, BrowserWindow, session, nativeTheme } from 'electron';
+import { app, BrowserWindow, session, nativeTheme, screen } from 'electron';
 import path from 'node:path';
 import { NativePlayerService } from './native/player-service';
 import { NativeVideoWindow } from './native/video-window';
+import { NativeOverlayWindow } from './services/overlay-window';
+import { registerOverlayWindowGetter } from './ipc/ipc-validator';
 import { MediaDatabase } from './database/media-db';
 import { MetadataService } from './native/metadata-service';
 import {
@@ -30,6 +32,8 @@ registerThumbnailScheme();
 // Core native services
 const playerService = new NativePlayerService();
 const videoWindow = new NativeVideoWindow();
+const overlayWindow = new NativeOverlayWindow();
+registerOverlayWindowGetter(() => overlayWindow.getWindow());
 let mediaDb: MediaDatabase | null = null;
 let metadataService: MetadataService | null = null;
 let lastSavedPositionTime = 0;
@@ -45,6 +49,11 @@ const getMetadataService = (): MetadataService | null => metadataService;
 playerService.onPlaybackStatusChange((status) => {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('player:playback-status-update', status);
+  }
+
+  const overlay = overlayWindow.getWindow();
+  if (overlay && !overlay.isDestroyed()) {
+    overlay.webContents.send('player:playback-status-update', status);
   }
 
   if (status.currentFile && mediaDb) {
@@ -123,21 +132,44 @@ function createWindow(): void {
 
   mainWindow.on('minimize', () => {
     videoWindow.setVisible(false);
+    overlayWindow.hideFullscreen();
   });
 
   mainWindow.on('restore', () => {
     mainWindow?.webContents.send('window:restored');
+    if (mainWindow?.isFullScreen()) {
+      overlayWindow.showFullscreen(mainWindow);
+    }
   });
 
   mainWindow.on('enter-full-screen', () => {
     startFullscreenActivityTracker(getMainWindow);
+    if (mainWindow) {
+      overlayWindow.showFullscreen(mainWindow);
+    }
     mainWindow?.webContents.send('window:fullscreen-change', true);
   });
 
   mainWindow.on('leave-full-screen', () => {
     stopFullscreenActivityTracker();
+    overlayWindow.hideFullscreen();
     mainWindow?.webContents.send('window:fullscreen-change', false);
   });
+
+  mainWindow.on('resize', () => {
+    if (mainWindow?.isFullScreen()) {
+      overlayWindow.syncBounds(mainWindow);
+    }
+  });
+
+  mainWindow.on('move', () => {
+    if (mainWindow?.isFullScreen()) {
+      overlayWindow.syncBounds(mainWindow);
+    }
+  });
+
+  // Warm up and initialize the single native overlay window
+  overlayWindow.create(getMainWindow, isDev);
 
   mainWindow.once('ready-to-show', () => {
     mainWindow?.show();
@@ -325,6 +357,7 @@ function createWindow(): void {
   mainWindow.on('closed', () => {
     stopFullscreenActivityTracker();
     videoWindow.destroy();
+    overlayWindow.destroy();
     mainWindow = null;
   });
 }
@@ -341,7 +374,10 @@ function registerAllIpcHandlers(): void {
 
   registerAppHandlers(handlerCtx);
   registerPlayerHandlers(handlerCtx);
-  registerWindowHandlers(handlerCtx);
+  registerWindowHandlers({
+    ...handlerCtx,
+    overlayManager: overlayWindow,
+  });
   registerLibraryHandlers(handlerCtx);
   registerPlaylistHandlers(handlerCtx);
   registerMetadataHandlers(handlerCtx);
@@ -388,6 +424,12 @@ app.whenReady().then(() => {
   initTitleBarThemeTracking(getMainWindow);
   createWindow();
 
+  screen.on('display-metrics-changed', () => {
+    if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isFullScreen()) {
+      overlayWindow.syncBounds(mainWindow);
+    }
+  });
+
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
@@ -406,6 +448,7 @@ app.on('before-quit', async () => {
     metadataService?.shutdown();
     stopFullscreenActivityTracker();
     videoWindow.destroy();
+    overlayWindow.destroy();
     mediaDb?.close();
     await playerService.shutdown();
   } catch (err) {

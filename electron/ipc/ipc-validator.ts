@@ -1,5 +1,11 @@
 import { BrowserWindow, IpcMainInvokeEvent } from 'electron';
 
+let overlayWindowGetter: (() => BrowserWindow | null) | null = null;
+
+export function registerOverlayWindowGetter(getter: () => BrowserWindow | null): void {
+  overlayWindowGetter = getter;
+}
+
 /**
  * Strict sender validation to prevent unauthorized IPC calls
  * from iframes, child windows, or unexpected origins.
@@ -12,7 +18,13 @@ export function validateIpcSender(
   if (!mainWindow || mainWindow.isDestroyed()) {
     return false;
   }
-  if (event.sender.id !== mainWindow.webContents.id) {
+  const overlayWin = overlayWindowGetter ? overlayWindowGetter() : null;
+  const isMain = event.sender.id === mainWindow.webContents.id;
+  const isOverlay = Boolean(
+    overlayWin && !overlayWin.isDestroyed() && event.sender.id === overlayWin.webContents.id
+  );
+
+  if (!isMain && !isOverlay) {
     return false;
   }
 

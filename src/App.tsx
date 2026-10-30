@@ -299,6 +299,51 @@ export const App: React.FC = () => {
   const isDesktopBridge = typeof window !== 'undefined' && typeof window.nosvedAPI !== 'undefined';
   const isFullscreenMode = isPlayerFullscreen || (isAppFullscreen && activeTab === 'player');
 
+  // Handle actions dispatched from the native fullscreen overlay window
+  useEffect(() => {
+    if (!window.nosvedAPI?.onOverlayAction) return;
+    const cleanup = window.nosvedAPI.onOverlayAction((action) => {
+      if (action === 'next-playlist-item') {
+        handlePlayNextPlaylistItem();
+      } else if (action === 'prev-playlist-item') {
+        handlePlayPrevPlaylistItem();
+      } else if (action === 'open-file') {
+        handleOpenFile();
+      } else if (action === 'open-tracks-modal') {
+        if (isFullscreenMode) {
+          handleExitPlayerFullscreen();
+        }
+        setIsTrackModalOpen(true);
+      }
+    });
+    return cleanup;
+  }, [
+    handlePlayNextPlaylistItem,
+    handlePlayPrevPlaylistItem,
+    handleOpenFile,
+    isFullscreenMode,
+    handleExitPlayerFullscreen,
+  ]);
+
+  // Synchronize active playlist details to the native overlay window
+  useEffect(() => {
+    if (window.nosvedAPI?.syncOverlayState) {
+      window.nosvedAPI
+        .syncOverlayState({
+          showOverlay,
+          activePlaylist: activePlaylist
+            ? {
+                playlistId: activePlaylist.playlistId,
+                playlistName: activePlaylist.playlistName,
+                itemCount: activePlaylist.items.length,
+                currentIndex: activePlaylist.currentIndex,
+              }
+            : null,
+        })
+        .catch(console.error);
+    }
+  }, [showOverlay, activePlaylist]);
+
   const currentPlayingItem =
     recentItems.find((it) => it.filePath === playbackStatus.currentFile) ||
     libraryItems.find((it) => it.filePath === playbackStatus.currentFile) ||

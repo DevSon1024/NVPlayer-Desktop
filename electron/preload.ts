@@ -74,6 +74,19 @@ export interface PlayerTracksSnapshotPayload {
   subtitlesVisible: boolean;
 }
 
+export interface OverlaySyncStatePayload {
+  showOverlay: boolean;
+  activePlaylist?: {
+    playlistId: string;
+    playlistName: string;
+    itemCount: number;
+    currentIndex: number;
+  } | null;
+  isLooping?: boolean;
+  selectedAudioTrack?: { id: number | string; lang?: string; title?: string } | null;
+  selectedSubTrack?: { id: number | string; lang?: string; title?: string } | null;
+}
+
 export interface NosvedAPI {
   getAppInfo: () => Promise<{
     name: string;
@@ -175,6 +188,16 @@ export interface NosvedAPI {
   onUserActive: (callback: () => void) => () => void;
   onWindowRestored: (callback: () => void) => () => void;
   onVideoDoubleClicked: (callback: () => void) => () => void;
+
+  // Native Fullscreen Overlay APIs
+  setOverlayIgnoreMouse: (ignore: boolean, forward?: boolean) => Promise<boolean>;
+  notifyOverlayInteraction: (isInteracting: boolean) => Promise<boolean>;
+  syncOverlayState: (state: OverlaySyncStatePayload) => Promise<boolean>;
+  sendOverlayAction: (action: string, data?: unknown) => Promise<boolean>;
+  sendOverlayActivity: () => Promise<boolean>;
+  onOverlayStateUpdate: (callback: (state: OverlaySyncStatePayload) => void) => () => void;
+  onOverlayAction: (callback: (action: string, data?: unknown) => void) => () => void;
+  onOverlayInteractionChanged: (callback: (isInteracting: boolean) => void) => () => void;
 
   // Phase 8 Media Library & History APIs
   getLibrary: () => Promise<MediaItemPayload[]>;
@@ -297,6 +320,45 @@ const api: NosvedAPI = {
     ipcRenderer.on('window:video-double-clicked', handler);
     return () => {
       ipcRenderer.removeListener('window:video-double-clicked', handler);
+    };
+  },
+
+  // Native Fullscreen Overlay APIs
+  setOverlayIgnoreMouse: (ignore: boolean, forward?: boolean) =>
+    ipcRenderer.invoke('window:set-overlay-ignore-mouse', ignore, forward),
+  notifyOverlayInteraction: (isInteracting: boolean) =>
+    ipcRenderer.invoke('overlay:notify-interaction', isInteracting),
+  syncOverlayState: (state: OverlaySyncStatePayload) =>
+    ipcRenderer.invoke('overlay:sync-state', state),
+  sendOverlayAction: (action: string, data?: unknown) =>
+    ipcRenderer.invoke('overlay:action', action, data),
+  sendOverlayActivity: () =>
+    ipcRenderer.invoke('overlay:user-activity'),
+  onOverlayStateUpdate: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, state: unknown) => {
+      callback(state as OverlaySyncStatePayload);
+    };
+    ipcRenderer.on('overlay:state-update', handler);
+    return () => {
+      ipcRenderer.removeListener('overlay:state-update', handler);
+    };
+  },
+  onOverlayAction: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, action: unknown, data?: unknown) => {
+      callback(String(action), data);
+    };
+    ipcRenderer.on('overlay:action', handler);
+    return () => {
+      ipcRenderer.removeListener('overlay:action', handler);
+    };
+  },
+  onOverlayInteractionChanged: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, isInteracting: unknown) => {
+      callback(Boolean(isInteracting));
+    };
+    ipcRenderer.on('overlay:interaction-changed', handler);
+    return () => {
+      ipcRenderer.removeListener('overlay:interaction-changed', handler);
     };
   },
 

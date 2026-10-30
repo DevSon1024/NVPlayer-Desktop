@@ -319,6 +319,12 @@ export function useFullscreen({
     resetInactivityTimer();
   }, [resetInactivityTimer]);
 
+  useEffect(() => {
+    if (window.nosvedAPI?.syncOverlayState) {
+      window.nosvedAPI.syncOverlayState({ showOverlay }).catch(console.error);
+    }
+  }, [showOverlay]);
+
   // Shell IPC Listeners for fullscreen and activity
   useEffect(() => {
     if (!window.nosvedAPI) return;
@@ -343,6 +349,15 @@ export function useFullscreen({
     if (window.nosvedAPI.onUserActive) {
       cleanups.push(
         window.nosvedAPI.onUserActive(() => {
+          resetInactivityTimer();
+        })
+      );
+    }
+
+    if (window.nosvedAPI.onOverlayInteractionChanged) {
+      cleanups.push(
+        window.nosvedAPI.onOverlayInteractionChanged((isInteracting) => {
+          isInteractingWithControlsRef.current = isInteracting;
           resetInactivityTimer();
         })
       );
