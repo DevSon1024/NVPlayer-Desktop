@@ -166,7 +166,7 @@ export const FullscreenFloatingIsland: React.FC<FullscreenFloatingIslandProps> =
   return (
     <div
       style={{ zIndex: 70 }}
-      className={`fixed bottom-8 left-1/2 -translate-x-1/2 z-[70] w-[540px] max-w-[92vw] rounded-2xl bg-[#1c1b22]/95 backdrop-blur-2xl border border-white/10 shadow-[0_24px_60px_rgba(0,0,0,0.75)] px-5 py-3 flex flex-col gap-2 transition-all duration-300 select-none text-foreground ${
+      className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-[70] w-[540px] max-w-[92vw] rounded-2xl bg-[#1c1b22]/95 backdrop-blur-2xl border border-white/10 shadow-[0_24px_60px_rgba(0,0,0,0.75)] px-5 py-3 flex flex-col gap-2 transition-all duration-300 select-none text-foreground ${
         showOverlay
           ? 'opacity-100 translate-y-0 pointer-events-auto'
           : 'opacity-0 translate-y-6 pointer-events-none'
@@ -175,7 +175,10 @@ export const FullscreenFloatingIsland: React.FC<FullscreenFloatingIslandProps> =
       onDoubleClick={(e) => e.stopPropagation()}
       onTouchEnd={(e) => e.stopPropagation()}
       onMouseEnter={onControlsMouseEnter}
-      onMouseLeave={() => {
+      onMouseLeave={(e) => {
+        if (e.buttons !== 0 || isDraggingRef.current) {
+          return;
+        }
         onControlsMouseLeave();
         if (effectiveMoreOpen) {
           toggleMoreMenu();

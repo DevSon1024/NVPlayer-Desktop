@@ -168,6 +168,12 @@ function createWindow(): void {
     }
   });
 
+  screen.on('display-metrics-changed', () => {
+    if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isFullScreen()) {
+      overlayWindow.syncBounds(mainWindow);
+    }
+  });
+
   // Warm up and initialize the single native overlay window
   overlayWindow.create(getMainWindow, isDev);
 

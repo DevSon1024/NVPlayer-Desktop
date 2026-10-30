@@ -154,45 +154,9 @@ export const FullscreenIslandOverlay: React.FC = () => {
     }
   }, []);
 
-  // Keyboard shortcut passthrough when overlay window is active
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.code === 'Space' || e.code === 'KeyK') {
-        e.preventDefault();
-        window.nosvedAPI?.togglePause().catch(console.error);
-      } else if (e.code === 'Escape' || e.code === 'KeyF') {
-        e.preventDefault();
-        window.nosvedAPI?.setFullscreen(false).catch(console.error);
-      } else if (e.code === 'ArrowLeft') {
-        e.preventDefault();
-        const pos = Math.max(0, (playbackStatus.position ?? 0) - 5);
-        window.nosvedAPI?.seek(pos).catch(console.error);
-      } else if (e.code === 'ArrowRight') {
-        e.preventDefault();
-        const max = playbackStatus.duration ?? (playbackStatus.position ?? 0) + 5;
-        const pos = Math.min(max, (playbackStatus.position ?? 0) + 5);
-        window.nosvedAPI?.seek(pos).catch(console.error);
-      } else if (e.code === 'ArrowUp') {
-        e.preventDefault();
-        const vol = Math.min(100, (playbackStatus.volume ?? 100) + 5);
-        window.nosvedAPI?.setVolume(vol).catch(console.error);
-      } else if (e.code === 'ArrowDown') {
-        e.preventDefault();
-        const vol = Math.max(0, (playbackStatus.volume ?? 100) - 5);
-        window.nosvedAPI?.setVolume(vol).catch(console.error);
-      } else if (e.code === 'KeyM') {
-        e.preventDefault();
-        window.nosvedAPI?.toggleMute().catch(console.error);
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [playbackStatus.position, playbackStatus.duration, playbackStatus.volume]);
-
   return (
     <div
-      className="w-full h-full overflow-hidden bg-transparent select-none relative pointer-events-none"
+      className="w-full h-full overflow-visible bg-transparent select-none relative pointer-events-none"
       onMouseMove={handleMouseMove}
     >
       <FullscreenFloatingIsland
