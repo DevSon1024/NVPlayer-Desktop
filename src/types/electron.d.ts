@@ -68,6 +68,19 @@ export interface PlaylistItem {
   media?: MediaItem;
 }
 
+export interface OverlaySyncState {
+  showOverlay: boolean;
+  activePlaylist?: {
+    playlistId: string;
+    playlistName: string;
+    itemCount: number;
+    currentIndex: number;
+  } | null;
+  isLooping?: boolean;
+  selectedAudioTrack?: { id: number | string; lang?: string; title?: string } | null;
+  selectedSubTrack?: { id: number | string; lang?: string; title?: string } | null;
+}
+
 export interface NosvedAPI {
   getAppInfo: () => Promise<{
     name: string;
@@ -169,6 +182,16 @@ export interface NosvedAPI {
   onUserActive: (callback: () => void) => () => void;
   onWindowRestored: (callback: () => void) => () => void;
   onVideoDoubleClicked: (callback: () => void) => () => void;
+
+  // Native Fullscreen Overlay APIs
+  setOverlayIgnoreMouse: (ignore: boolean, forward?: boolean) => Promise<boolean>;
+  notifyOverlayInteraction: (isInteracting: boolean) => Promise<boolean>;
+  syncOverlayState: (state: OverlaySyncState) => Promise<boolean>;
+  sendOverlayAction: (action: string, data?: unknown) => Promise<boolean>;
+  sendOverlayActivity: () => Promise<boolean>;
+  onOverlayStateUpdate: (callback: (state: OverlaySyncState) => void) => () => void;
+  onOverlayAction: (callback: (action: string, data?: unknown) => void) => () => void;
+  onOverlayInteractionChanged: (callback: (isInteracting: boolean) => void) => () => void;
 
   // Media Library & Persistence APIs (Phase 8)
   getLibrary: () => Promise<MediaItem[]>;

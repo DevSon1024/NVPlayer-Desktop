@@ -35,3 +35,10 @@ export function formatDate(timestamp: number | null | undefined): string {
     minute: '2-digit',
   });
 }
+
+export function formatCleanTitle(filePath: string | null | undefined): string {
+  if (!filePath) return '';
+  const fileName = filePath.split(/[/\\]/).pop() || filePath;
+  const nameWithoutExt = fileName.replace(/\.[^/.]+$/, '');
+  return nameWithoutExt.replace(/[._]/g, ' ');
+}

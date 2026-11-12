@@ -615,3 +615,17 @@ input[type="range"]::-webkit-slider-thumb:hover {
     transform: rotate(360deg);
   }
 }
+
+/* Dedicated Native Overlay Window Styles */
+html.overlay-window-html,
+html.overlay-window-html body,
+body.overlay-window-body,
+body.overlay-window-body #root,
+.overlay-window-body,
+.overlay-window-body #root {
+  background: transparent !important;
+  background-color: transparent !important;
+  overflow: hidden !important;
+  user-select: none !important;
+}
+
